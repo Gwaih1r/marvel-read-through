@@ -1,7 +1,8 @@
 import { firebaseConfig } from './config.js';
+import { ART } from './art.js';
 
 const FB = 'https://www.gstatic.com/firebasejs/10.12.2/';
-const APP_VERSION = '2.0.3';
+const APP_VERSION = '2.1.0';
 
 /* ================= helpers ================= */
 const $ = id => document.getElementById(id);
@@ -224,9 +225,11 @@ function banner() {
   return h;
 }
 const coverStyle = c => `--c1:${c.colors[0]};--c2:${c.colors[1]}`;
+const artMemo = {};
+const coverArt = (c, cls = '') => ART[c.id] ? `<svg class="art ${cls}" viewBox="0 0 300 400" preserveAspectRatio="xMidYMid slice" aria-hidden="true">${artMemo[c.id] || (artMemo[c.id] = ART[c.id]())}</svg>` : '';
 function coverTile(c, cur) {
   const r = readCount(c.id), p = Math.min(100, r / c.total * 100), done = r >= c.total;
-  return `<button class="cv cover${c === cur ? ' cur' : ''}" style="${coverStyle(c)}" data-act="nav" data-h="ch-${c.id}" aria-label="${esc(chLabel(c))}, ${fmt(r)} of ${fmt(c.total)} read">
+  return `<button class="cv cover${c === cur ? ' cur' : ''}" style="${coverStyle(c)}" data-act="nav" data-h="ch-${c.id}" aria-label="${esc(chLabel(c))}, ${fmt(r)} of ${fmt(c.total)} read">${coverArt(c)}
     ${done ? '<span class="badge">Done</span>' : c === cur ? '<span class="badge">Reading</span>' : ''}
     <span class="num">${c.num || 'P'}</span>
     <span><span class="lab">${c.num ? 'Chapter ' + c.num + ' · ' : ''}${esc(c.years)}</span><span class="nm" style="display:block">${esc(c.name)}</span>
@@ -242,13 +245,13 @@ function home() {
   const m = allDays(), t = today(), tot = totalRead(), guide = guideTotal();
   const cur = curChapter(), ready = !!cat[cur.id], nx = ready ? nextUp(cur.id) : null;
   let hero;
-  if (!ready) hero = `<section class="hero cover" style="${coverStyle(cur)}"><div class="eyebrow"><span>${esc(chLabel(cur))}</span></div><h1>${cat[cur.id] === null ? 'Couldn’t load this chapter' : 'Loading…'}</h1></section>`;
-  else if (!nx) hero = `<section class="hero cover" style="${coverStyle(cur)}"><div class="eyebrow"><span>${esc(chLabel(cur))}</span></div><h1>All caught up</h1><p class="arcline">Every issue in the guide is checked off.</p></section>`;
+  if (!ready) hero = `<section class="hero cover" style="${coverStyle(cur)}">${coverArt(cur, 'wide')}<div class="eyebrow"><span>${esc(chLabel(cur))}</span></div><h1>${cat[cur.id] === null ? 'Couldn’t load this chapter' : 'Loading…'}</h1></section>`;
+  else if (!nx) hero = `<section class="hero cover" style="${coverStyle(cur)}">${coverArt(cur, 'wide')}<div class="eyebrow"><span>${esc(chLabel(cur))}</span></div><h1>All caught up</h1><p class="arcline">Every issue in the guide is checked off.</p></section>`;
   else {
     const g = arcOfIssue(cur.id, nx[1]), list = g ? g.iss : [nx], pos = list.findIndex(r => r[1] === nx[1]);
     const rdc = list.filter(r => isRead(cur.id, r[1])).length;
     const who = [charName(nx[5]), writerNames(nx[6])[0]].filter(Boolean).join(' · ');
-    hero = `<section class="hero cover" style="${coverStyle(cur)}">
+    hero = `<section class="hero cover" style="${coverStyle(cur)}">${coverArt(cur, 'wide')}
       <div class="eyebrow"><span>Up next · ${esc(chLabel(cur))}</span><span>${fmt(readCount(cur.id))} / ${fmt(cur.total)}</span></div>
       <h1>${esc(nx[2])}</h1>
       <p class="arcline">${g && g.a ? esc(g.a[2] || g.a[1]) : ''}${who ? ' <span style="opacity:.75">· ' + esc(who) + '</span>' : ''}</p>
@@ -299,7 +302,7 @@ function chaptersView() {
 function chapterView(sid, focus) {
   const c = chById[sid]; if (!c) return home();
   const rows = cat[sid], r = readCount(sid), p = r / c.total * 100;
-  const head = `<header class="chead cover" style="${coverStyle(c)}">
+  const head = `<header class="chead cover" style="${coverStyle(c)}">${coverArt(c, 'wide')}
     <button class="back" data-act="nav" data-h="chapters">${I.back}Chapters</button>
     <div class="k">${c.num ? 'Chapter ' + c.num : 'Prologue'} · ${esc(c.years)}</div>
     <h1>${esc(c.name)}</h1><p>${esc(c.summary)}</p>
