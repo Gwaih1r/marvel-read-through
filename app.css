@@ -401,7 +401,9 @@ svg.art.wide{opacity:.32}
 
 /* ===== character accents ===== */
 .arc.acc{position:relative}
-.arc.acc::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--acc);opacity:.9}
+.arc.acc::before{content:"";position:absolute;left:0;top:0;bottom:0;width:5px;background:var(--acc);z-index:1}
+.arc.acc>.ah{background:linear-gradient(100deg,color-mix(in srgb,var(--acc) 26%,transparent) 0%,color-mix(in srgb,var(--acc) 8%,transparent) 55%,transparent 85%)}
+:root[data-theme=light] .arc.acc>.ah{background:linear-gradient(100deg,color-mix(in srgb,var(--acc) 18%,transparent) 0%,transparent 80%)}
 .arc.acc .tag.ch{background:color-mix(in srgb,var(--acc) 18%,transparent);color:color-mix(in srgb,var(--acc) 75%,var(--ink))}
 
 /* ===== event banner ===== */

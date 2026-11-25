@@ -2,7 +2,7 @@ import { firebaseConfig } from './config.js';
 import { ART } from './art.js';
 
 const FB = 'https://www.gstatic.com/firebasejs/10.12.2/';
-const APP_VERSION = '2.5.0';
+const APP_VERSION = '2.5.1';
 
 /* ================= helpers ================= */
 const $ = id => document.getElementById(id);
@@ -1086,12 +1086,15 @@ async function importSeed() {
 
 /* ================= service worker updates ================= */
 let reg = null;
+const bootAt = Date.now();
+// Apply an update on its own when it's safe: right as the app opens, or when you come back to it with nothing open.
+function autoApply() { if (swWaiting && !sheetOpen && (Date.now() - bootAt < 8000 || document.visibilityState === 'visible')) swWaiting.postMessage('skipWaiting'); }
 function watchSW(r) {
   reg = r;
-  if (r.waiting && navigator.serviceWorker.controller) { swWaiting = r.waiting; render(); }
+  if (r.waiting && navigator.serviceWorker.controller) { swWaiting = r.waiting; render(); autoApply(); }
   r.addEventListener('updatefound', () => {
     const w = r.installing; if (!w) return;
-    w.addEventListener('statechange', () => { if (w.state === 'installed' && navigator.serviceWorker.controller) { swWaiting = w; render(); } });
+    w.addEventListener('statechange', () => { if (w.state === 'installed' && navigator.serviceWorker.controller) { swWaiting = w; render(); if (Date.now() - bootAt < 8000) autoApply(); } });
   });
 }
 async function checkUpdate() {
@@ -1103,7 +1106,7 @@ if ('serviceWorker' in navigator) {
   let reloading = false;
   navigator.serviceWorker.addEventListener('controllerchange', () => { if (reloading) return; reloading = true; location.reload(); });
   window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').then(watchSW).catch(() => { }));
-  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && reg) reg.update().catch(() => { }); });
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { if (swWaiting) autoApply(); else if (reg) reg.update().catch(() => { }); } });
 }
 
 /* ================= boot ================= */
