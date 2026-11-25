@@ -2,7 +2,7 @@ import { firebaseConfig } from './config.js';
 import { ART } from './art.js';
 
 const FB = 'https://www.gstatic.com/firebasejs/10.12.2/';
-const APP_VERSION = '2.2.1';
+const APP_VERSION = '2.3.0';
 
 /* ================= helpers ================= */
 const $ = id => document.getElementById(id);
@@ -51,6 +51,7 @@ const I = {
   cal: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>',
   undo: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/></svg>',
   star: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/></svg>',
+  flame: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2c1 4 5 6 5 11a5 5 0 0 1-10 0c0-2 1-3.5 2-4.5 0 2 1 3 2 3-1-3 0-6 1-9.5z"/></svg>',
   pen: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></svg>',
   mark: '<svg viewBox="0 0 32 32" fill="none"><rect x="5" y="5" width="9" height="9" rx="1.5" fill="#fff"/><rect x="18" y="5" width="9" height="9" rx="1.5" fill="#fff"/><rect x="5" y="18" width="9" height="9" rx="1.5" fill="#fff"/><path d="M18.5 22.5l3 3 5.5-6.5" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>'
 };
@@ -155,19 +156,22 @@ function guard() {
 function snapshot(sid, label) { lastUndo = { sid, reads: { ...P(sid).reads }, ratings: { ...P(sid).ratings }, notes: { ...P(sid).notes } }; }
 function toggle(sid, n) {
   if (!guard()) return;
+  const b = beforeState(sid);
   const rd = P(sid).reads, was = rd[n]; snapshot(sid);
   if (was !== undefined) delete rd[n]; else { rd[n] = today(); popKey = sid + ':' + n; if (navigator.vibrate) navigator.vibrate(8); }
   queue(sid); render();
   const r = issues(sid).find(x => x[1] === n);
   toast((was === undefined ? 'Read ' : 'Unmarked ') + (r ? r[2] : '#' + n), true);
+  if (was === undefined) afterChange(sid, b);
 }
-function setDate(sid, n, d) { if (!guard()) return; snapshot(sid); P(sid).reads[n] = d; queue(sid); render(); toast('Read date set to ' + longDate(d), true); }
+function setDate(sid, n, d) { if (!guard()) return; const b = beforeState(sid); const was = P(sid).reads[n]; snapshot(sid); P(sid).reads[n] = d; queue(sid); render(); toast('Read date set to ' + longDate(d), true); if (was === undefined) afterChange(sid, b); }
 function unmark(sid, n) { if (!guard()) return; snapshot(sid); delete P(sid).reads[n]; queue(sid); render(); toast('Marked unread', true); }
 function arcAll(sid, ai, read) {
-  if (!guard()) return; const a = arcs(sid).get(ai); if (!a) return; snapshot(sid);
+  if (!guard()) return; const a = arcs(sid).get(ai); if (!a) return; const bs = beforeState(sid); snapshot(sid);
   const rd = P(sid).reads, t = today(); let c = 0;
   for (const r of a.iss) { if (read && rd[r[1]] === undefined) { rd[r[1]] = t; c++; } if (!read && rd[r[1]] !== undefined) { delete rd[r[1]]; c++; } }
   queue(sid); render(); toast((read ? 'Marked ' : 'Unmarked ') + plural(c, 'issue') + ' in ' + a.name, true);
+  if (read) afterChange(sid, bs);
 }
 function undo() { if (!lastUndo) return; const { sid, reads, ratings, notes } = lastUndo; prog[sid] = { reads, ratings, notes }; lastUndo = null; queue(sid); render(); toastHost.innerHTML = ''; }
 function rate(sid, ai, k) {
@@ -186,8 +190,8 @@ function toast(msg, canUndo) {
 
 /* ================= bottom sheet (closes with Android back) ================= */
 let sheetOpen = false, ignorePop = false;
-function openSheet(html) {
-  sheetHost.innerHTML = `<div class="scrim" data-act="scrim"><div class="sheet" role="dialog" aria-modal="true"><div class="grab"></div>${html}</div></div>`;
+function openSheet(html, kind) {
+  sheetHost.innerHTML = kind === 'full' ? `<div class="scrim full" data-act="scrim"><div class="celebw" role="dialog" aria-modal="true">${html}</div></div>` : `<div class="scrim" data-act="scrim"><div class="sheet" role="dialog" aria-modal="true"><div class="grab"></div>${html}</div></div>`;
   if (!sheetOpen) { sheetOpen = true; history.pushState({ sheet: 1 }, ''); }
 }
 function closeSheet() { if (!sheetOpen) return; sheetOpen = false; sheetHost.innerHTML = ''; ignorePop = true; history.back(); }
@@ -203,6 +207,7 @@ function issueSheet(sid, n) {
   openSheet(`<h3>${esc(r[2])}</h3><p>${g && g.a ? esc(g.a[2] || g.a[1]) + '. ' : ''}${who ? esc(who) + '. ' : ''}${d ? 'Read ' + esc(longDate(d)) + '.' : 'Not read yet.'}</p>
     <div class="field"><label for="rdate">Date read</label><input id="rdate" type="date" value="${esc(d || today())}" max="${today()}"></div>
     <button class="btn red" style="width:100%;margin-bottom:8px" data-act="savedate" data-s="${sid}" data-n="${n}">${d ? 'Save date' : 'Mark read on this date'}</button>
+    ${(() => { let k = 0; const rd = P(sid).reads; for (const x of issues(sid)) { if (rd[x[1]] === undefined) k++; if (x[1] === n) break; } return k > 1 ? `<button class="opt" data-act="markupto" data-s="${sid}" data-n="${n}">${I.checkDark}Mark all ${k} unread issues up to here read</button>` : ''; })()}
     ${d ? `<button class="opt dan" data-act="unmark" data-s="${sid}" data-n="${n}">${I.undo}Mark unread</button>` : ''}
     <button class="opt" data-act="closesheet">Cancel</button>`);
 }
@@ -294,13 +299,14 @@ function home() {
   let last7 = 0; for (let i = 0; i < 7; i++) last7 += m[iso(addDays(new Date(), -i))] || 0;
   return `${appbar('Read-Through', 'Modern-era Marvel · Continuity Guide order')}
   ${banner()}${hero}
-  <div class="figs">
+  ${goalCard(m)}
+  <div class="figs" style="grid-template-columns:repeat(3,minmax(0,1fr))">
     <div class="fig"><b>${fmt(tot)}</b><span>issues read</span></div>
-    <div class="fig"><b>${m[t] || 0}</b><span>today</span></div>
-    <div class="fig"><b>${streakFrom(m)}</b><span>day streak</span></div>
+    <div class="fig"><b>${fmt(wsum)}</b><span>this week</span></div>
     <div class="fig"><b>${(last7 / 7).toFixed(1)}</b><span>7-day average</span></div>
   </div>
   <div class="guide"><div class="top"><span>Through the guide</span><span><b>${(tot / guide * 100).toFixed(1)}%</b> of ${fmt(guide)}</span></div><div class="meter"><i style="width:${Math.min(100, tot / guide * 100)}%"></i></div></div>
+  ${timeline(false)}
   ${qh}
   <div class="sec"><h2>This week</h2><button data-act="nav" data-h="stats">${plural(wsum, 'issue')} · All stats</button></div>
   <div class="week" role="img" aria-label="Issues read each day this week">${wk.map(([k, v], i) => `<div class="${k === t ? 't' : ''}"><strong>${v || ''}</strong><span class="b"><i class="${v ? '' : 'z'}" style="height:${v ? Math.max(6, v / wmax * 100) : 3}%"></i></span><span>${DOW[i].slice(0, 1)}</span></div>`).join('')}</div>
@@ -358,7 +364,7 @@ function chapterView(sid, focus) {
         <span class="chk">${I.check}</span><span class="tt"><b>${esc(x[2])}</b>${who ? `<small>${esc(who)}</small>` : ''}</span>
         <span class="dt" data-act="isheet" data-s="${sid}" data-n="${x[1]}">${on ? esc(short(rd[x[1]])) : '#' + x[1]}</span></button>`;
     }).join('') : '';
-    return `<section class="arc">${hd}${items}</section>`;
+    return `<section class="arc${justDone === key ? ' justdone' : ''}">${hd}${items}</section>`;
   }).join('');
   return head + banner() + chips + (body || '<div class="empty">Nothing unread here. This chapter is finished.</div>');
 }
@@ -481,10 +487,11 @@ function arcLine(a) { return `<button class="kv" style="width:100%;text-align:le
 
 function statsView() {
   const S = computeStats();
-  const tabs = [['overview', 'Overview'], ['pace', 'Pace'], ['ratings', 'Ratings'], ['universe', 'Universe'], ['milestones', 'Milestones']];
+  const tabs = [['overview', 'Overview'], ['wrapped', 'Wrapped'], ['pace', 'Pace'], ['ratings', 'Ratings'], ['universe', 'Universe'], ['milestones', 'Milestones']];
   let body = '';
-  const needAll = ['ratings', 'universe'].includes(statTab) && !allLoaded;
+  const needAll = ['ratings', 'universe', 'wrapped'].includes(statTab) && !allLoaded;
   if (needAll) body = '<p class="status">Crunching every chapter…</p>';
+  else if (statTab === 'wrapped') body = wrappedView();
   else if (statTab === 'overview') {
     const diff = S.thisWeek - S.lastWeekSoFar;
     body = `<div class="figs" style="margin-bottom:10px">
@@ -534,7 +541,7 @@ function statsView() {
   } else if (statTab === 'universe') {
     const cmax = S.chars[0] ? S.chars[0][1] : 1, wmax = S.writers[0] ? S.writers[0][1] : 1;
     const evs = S.events.filter(e => e.read > 0).sort((a, b) => b.read / b.total - a.read / a.total), evDone = S.events.filter(e => e.read >= e.total).length;
-    body = `<section class="panel"><h3>Marvel time</h3>${kv('Now reading', esc(S.marvelArc || '—'))}${kv('Originally published', esc(S.marvelTime || '—'))}${kv('Current lead', esc(S.curChar || '—'))}${kv('Current writer', esc(S.curWriter || 'Not credited yet'))}</section>
+    body = `${timeline(true)}<section class="panel"><h3>Right now</h3>${kv('Now reading', esc(S.marvelArc || '—'))}${kv('Originally published', esc(S.marvelTime || '—'))}${kv('Current lead', esc(S.curChar || '—'))}${kv('Current writer', esc(S.curWriter || 'Not credited yet'))}</section>
     <section class="panel"><h3>Most-read characters</h3><div class="rows">${S.chars.map(([k, v]) => hbar(esc(k), v, cmax)).join('') || '<p class="k">Nothing yet.</p>'}</div></section>
     <section class="panel"><h3>Most-read writers</h3><p class="k">Writer credits cover part of the guide so far.</p><div class="rows">${S.writers.map(([k, v]) => hbar(esc(k), v, wmax)).join('') || '<p class="k">Nothing yet.</p>'}</div></section>
     <section class="panel"><h3>Events</h3><p class="k">${evDone} of ${S.events.length} finished.</p>${evs.map(e => `<div class="ev${e.read >= e.total ? ' done' : ''}"><b style="font-weight:500">${esc(e.name)}</b><span>${e.read} / ${e.total}</span><div class="meter"><i style="width:${e.read / e.total * 100}%"></i></div></div>`).join('')}
@@ -564,6 +571,7 @@ function settingsView() {
   return `<header class="appbar"><button class="back ibtn" data-act="back" aria-label="Back">${I.back}</button><div class="brand" style="flex:1"><b>Settings</b></div></header>
   ${banner()}
   <section class="panel"><h3>Account</h3>${acct}</section>
+  <section class="panel"><h3>Daily goal</h3>${kv('Issues per day', fmt(+appSettings.goal || 0))}<div class="row" style="margin-top:12px"><button class="btn line" data-act="goalset">Change goal</button></div></section>
   <section class="panel"><h3>Appearance</h3><div class="seg" role="radiogroup" aria-label="Theme">${[['system', 'System'], ['dark', 'Dark'], ['light', 'Light']].map(([k, l]) => `<button role="radio" aria-checked="${th === k}" class="${th === k ? 'on' : ''}" data-act="theme" data-t="${k}">${l}</button>`).join('')}</div></section>
   <section class="panel"><h3>Sync</h3>${kv('Status', esc(sync))}${lastServer ? kv('Last synced', esc(lastServer.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }))) : ''}</section>
   <section class="panel"><h3>Backup</h3><p class="k" style="margin:0 0 12px">Save every check mark, date and rating to a file, or restore from one.</p>
@@ -572,6 +580,213 @@ function settingsView() {
     <div class="row" style="margin-top:12px"><button class="btn line" data-act="checkupdate">Check for updates</button></div>
     <p class="k" style="margin:12px 0 0">Fan-made reading tracker. Not affiliated with Marvel or the Continuity Guide.</p></section>`;
 }
+
+
+/* ================= settings (synced) ================= */
+let appSettings = (() => { try { return { goal: 40, ...JSON.parse(localStorage.getItem('rt-settings') || '{}') }; } catch (e) { return { goal: 40 }; } })();
+let settingsDirty = false;
+function saveSettings() {
+  try { localStorage.setItem('rt-settings', JSON.stringify(appSettings)); } catch (e) { }
+  if (fb && canWrite) { settingsDirty = true; fb.setDoc(fb.doc(fb.db, 'progress', 'settings'), appSettings).catch(() => { }).finally(() => { settingsDirty = false; }); }
+}
+
+/* ================= celebrations ================= */
+function confetti(n = 70) {
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const host = document.createElement('div'); host.className = 'confetti'; host.setAttribute('aria-hidden', 'true');
+  const cols = ['#ec1d24', '#f5b51b', '#ffffff', '#34c27a', '#4fc3f7'];
+  for (let i = 0; i < n; i++) {
+    const p = document.createElement('i');
+    p.style.cssText = `left:${Math.random() * 100}%;background:${cols[i % cols.length]};animation-delay:${Math.random() * .35}s;animation-duration:${1.6 + Math.random() * 1.2}s;--dx:${(Math.random() - .5) * 160}px;--r:${Math.random() * 720 - 360}deg;width:${5 + Math.random() * 6}px;height:${8 + Math.random() * 8}px`;
+    host.appendChild(p);
+  }
+  document.body.appendChild(host); setTimeout(() => host.remove(), 3400);
+}
+let justDone = '';
+function beforeState(sid, ns) {
+  const m = allDays(), rd = P(sid).reads;
+  const arcsDone = new Set(); for (const g of groups(sid)) if (g.iss.length && g.iss.every(x => rd[x[1]] !== undefined)) arcsDone.add(g.gi);
+  return { today: m[today()] || 0, arcsDone, chDone: readCount(sid) >= chById[sid].total };
+}
+function afterChange(sid, b) {
+  const t = (allDays()[today()] || 0), goal = +appSettings.goal || 0;
+  const rd = P(sid).reads; let finished = null;
+  for (const g of groups(sid)) if (g.a && !b.arcsDone.has(g.gi) && g.iss.length && g.iss.every(x => rd[x[1]] !== undefined)) { finished = g; break; }
+  const chNow = readCount(sid) >= chById[sid].total;
+  if (chNow && !b.chDone) { chapterCelebration(sid); confetti(120); return; }
+  if (finished) { justDone = sid + '-' + finished.gi; setTimeout(() => { justDone = ''; }, 1800); render(); confetti(40); if (navigator.vibrate) navigator.vibrate([12, 40, 12]); setTimeout(() => toast('Arc finished: ' + (finished.a[2] || finished.a[1])), 50); }
+  if (goal && b.today < goal && t >= goal) { confetti(90); setTimeout(() => toast('Daily goal hit: ' + t + ' issues today.'), finished ? 2200 : 50); }
+}
+function chapterCelebration(sid) {
+  const c = chById[sid], rd = P(sid).reads, ds = Object.values(rd).filter(Boolean).sort();
+  const days = ds.length ? Math.round((parse(ds[ds.length - 1]) - parse(ds[0])) / 864e5) + 1 : 0;
+  const rated = [...arcs(sid).values()].map(a => [a, P(sid).ratings[a.ai]]).filter(x => x[1]);
+  const top = rated.sort((x, y) => y[1] - x[1])[0], av = avg(rated.map(x => x[1]));
+  const next = chapters[chapters.indexOf(c) + 1];
+  openSheet(`<div class="celeb cover" style="${coverStyle(c)}">${coverArt(c)}
+    <div class="ct"><span class="k">${c.num ? 'Chapter ' + c.num : 'Prologue'} complete</span><h2>${esc(c.name)}</h2>
+    <div class="cs"><div><b>${fmt(c.total)}</b><span>issues</span></div><div><b>${days}</b><span>${days === 1 ? 'day' : 'days'}</span></div><div><b>${av ? av.toFixed(1) : '—'}</b><span>avg stars</span></div></div>
+    ${top ? `<p>Your top arc: <b>${esc(top[0].name)}</b> ${starTxt(top[1])}</p>` : ''}
+    <div class="acts">${next ? `<button class="btn prim" data-act="celebgo" data-h="ch-${next.id}">Start ${esc(chLabel(next))}</button>` : ''}<button class="btn ghost" data-act="closesheet">Close</button></div></div></div>`, 'full');
+}
+
+/* ================= timeline ================= */
+const TL0 = 1961, TL1 = 2025;
+const tlx = y => Math.max(0, Math.min(100, (y - TL0) / (TL1 - TL0) * 100));
+function chYears(c) { const m = String(c.years).match(/(\d{4})s?\D+(\d{4})s?/); if (!m) return [TL0, TL0 + 1]; let a = +m[1], b = +m[2]; if (c.num === 0) { a = 1961; b = 2001; } return [a, b + 1]; }
+function dateYear(s) { const m = /(\d{1,2})?\s*([A-Za-z]{3})[a-z]*\.?\s+(\d{4})/.exec(s || ''); if (!m) return null; const mo = MON.indexOf(m[2].slice(0, 1).toUpperCase() + m[2].slice(1, 3).toLowerCase()); return +m[3] + (mo < 0 ? 0 : mo / 12); }
+function marvelNow() {
+  const cur = curChapter(); if (!cat[cur.id]) return null; const nx = nextUp(cur.id); let y = null;
+  for (const g of groups(cur.id)) { if (g.a && g.a[3]) { const v = dateYear(g.a[3]); if (v) y = v; } if (nx && g.iss.some(r => r[1] === nx[1])) break; }
+  return y;
+}
+const evYearMemo = {};
+function eventYears() {
+  if (!allLoaded || !meta) return [];
+  return meta.events.map(e => {
+    if (evYearMemo[e.name] === undefined) {
+      let y = null;
+      for (const sid of Object.keys(e.issues).map(Number).sort()) { const first = e.issues[sid][0]; let last = null; for (const g of groups(sid)) { if (g.a && g.a[3]) last = dateYear(g.a[3]) || last; if (g.iss.some(r => r[1] === first)) { y = last; break; } } if (y) break; }
+      evYearMemo[e.name] = y;
+    }
+    let r = 0; for (const sid in e.issues) for (const n of e.issues[sid]) if (isRead(+sid, n)) r++;
+    return { name: e.name, y: evYearMemo[e.name], read: r, total: e.total };
+  }).filter(e => e.y).sort((a, b) => a.y - b.y);
+}
+function timeline(full) {
+  const now = marvelNow(), cur = curChapter();
+  const nowLabel = now ? FULLMON[Math.floor((now % 1) * 12 + .001)] + ' ' + Math.floor(now) : '';
+  const bands = chapters.map((c, i) => { const [a, b] = chYears(c); return `<i class="${c === cur ? 'cur' : readCount(c.id) >= c.total ? 'done' : ''}" style="left:${tlx(a)}%;width:${Math.max(1.2, tlx(b) - tlx(a))}%;top:${(i % 3) * 7}px;background:${c.colors[1]}" title="${esc(chLabel(c))}"></i>`; }).join('');
+  const evs = full ? eventYears() : [];
+  const dots = evs.map(e => `<i class="${e.read >= e.total ? 'done' : e.read ? 'part' : ''}" style="left:${tlx(e.y)}%" title="${esc(e.name)}"></i>`).join('');
+  const ticks = [1960, 1970, 1980, 1990, 2000, 2010, 2020].map(y => `<span style="left:${tlx(y)}%">${y}</span>`).join('');
+  return `<section class="tl${full ? ' full' : ''}" ${full ? '' : 'data-act="tlopen" role="button" tabindex="0"'}>
+    <div class="tlh"><h3>Marvel time</h3><span>${now ? 'You’re in <b>' + esc(nowLabel) + '</b>' : ''}</span></div>
+    <div class="tltrack"><div class="tlfill" style="width:${now ? tlx(now) : 0}%"></div>${now ? `<div class="tlnow" style="left:${tlx(now)}%"></div>` : ''}</div>
+    <div class="tlbands">${bands}</div>
+    ${full ? `<div class="tldots">${dots}</div>` : ''}
+    <div class="tlticks">${ticks}</div>
+    ${full ? `<div class="tlev">${evs.map(e => `<div class="${e.read >= e.total ? 'done' : ''}"><span>${Math.floor(e.y)}</span><b>${esc(e.name)}</b><em>${e.read >= e.total ? 'Done' : e.read ? fmt(e.read) + ' / ' + fmt(e.total) : 'Ahead'}</em></div>`).join('')}</div>` : ''}
+  </section>`;
+}
+
+/* ================= goal card ================= */
+function goalCard(m) {
+  const goal = +appSettings.goal || 0, t = m[today()] || 0, s = streakFrom(m);
+  let hit = 0; for (let i = 0; i < 7; i++) if ((m[iso(addDays(new Date(), -i))] || 0) >= goal) hit++;
+  const pct = goal ? Math.min(1, t / goal) : 0, R = 34, C = 2 * Math.PI * R;
+  return `<section class="goalc${goal && t >= goal ? ' met' : ''}">
+    <button class="ring" data-act="goalset" aria-label="Today ${t} of ${goal} issues. Change goal"><svg viewBox="0 0 84 84"><circle cx="42" cy="42" r="${R}" class="rb"/><circle cx="42" cy="42" r="${R}" class="rf" style="stroke-dasharray:${C};stroke-dashoffset:${C * (1 - pct)}"/></svg><span><b>${t}</b><small>of ${goal}</small></span></button>
+    <div class="gt"><b>${goal && t >= goal ? 'Goal hit' : goal ? fmt(Math.max(0, goal - t)) + ' to go today' : 'No daily goal set'}</b>
+      <span class="fl">${I.flame}<b>${s}</b> day streak</span>
+      <span>Goal met ${hit} of the last 7 days</span></div>
+  </section>`;
+}
+function goalSheet() {
+  openSheet(`<h3>Daily goal</h3><p>How many issues do you want to read each day? It syncs to your other devices.</p>
+    <div class="field"><label for="goalin">Issues per day</label><input id="goalin" type="number" inputmode="numeric" min="1" max="300" value="${+appSettings.goal || 40}"></div>
+    <div class="row" style="margin-bottom:10px">${[20, 30, 40, 50, 60].map(v => `<button class="chip" data-act="goalpick" data-v="${v}">${v}</button>`).join('')}</div>
+    <button class="btn red" style="width:100%;margin-bottom:8px" data-act="goalsave">Save goal</button><button class="opt" data-act="closesheet">Cancel</button>`);
+}
+
+/* ================= mark up to here ================= */
+function markUpTo(sid, n, d) {
+  if (!guard()) return; const b = beforeState(sid); snapshot(sid);
+  const rd = P(sid).reads; let c = 0;
+  for (const r of issues(sid)) { if (rd[r[1]] === undefined) { rd[r[1]] = d; c++; } if (r[1] === n) break; }
+  queue(sid); render(); toast('Marked ' + plural(c, 'issue') + ' read', true); afterChange(sid, b);
+}
+
+/* ================= wrapped ================= */
+let wrapMonth = '';
+function monthStats(mk) {
+  const m = allDays(), days = Object.entries(m).filter(([d]) => d.startsWith(mk));
+  const tot = days.reduce((a, x) => a + x[1], 0), best = days.sort((a, b) => b[1] - a[1])[0];
+  let longest = 0, run = 0; const [y, mo] = mk.split('-').map(Number); const dim = new Date(y, mo, 0).getDate();
+  for (let d = 1; d <= dim; d++) { if (m[mk + '-' + pad(d)]) { run++; longest = Math.max(longest, run); } else run = 0; }
+  const prevK = iso(new Date(y, mo - 2, 1)).slice(0, 7); const prev = Object.entries(m).filter(([d]) => d.startsWith(prevK)).reduce((a, x) => a + x[1], 0);
+  const ch = {}, wr = {}, chap = {}; let arcsFin = [], chFin = [];
+  for (const c of chapters) {
+    const rd = P(c.id).reads; if (!cat[c.id]) continue;
+    for (const r of issues(c.id)) { const d = rd[r[1]]; if (d && d.startsWith(mk)) { chap[c.id] = (chap[c.id] || 0) + 1; if (r[5] !== '' && r[5] != null) ch[r[5]] = (ch[r[5]] || 0) + 1; (r[6] || []).forEach(w => wr[w] = (wr[w] || 0) + 1); } }
+    for (const a of arcs(c.id).values()) { if (!a.iss.length || !a.iss.every(r => rd[r[1]])) continue; const last = a.iss.map(r => rd[r[1]]).sort().pop(); if (last.startsWith(mk)) arcsFin.push({ ...a, v: P(c.id).ratings[a.ai] || 0 }); }
+    if (readCount(c.id) >= c.total) { const last = Object.values(rd).sort().pop(); if (last && last.startsWith(mk)) chFin.push(c); }
+  }
+  const top = o => { const e = Object.entries(o).sort((a, b) => b[1] - a[1])[0]; return e; };
+  const tc = top(ch), tw = top(wr), mainCh = top(chap);
+  const topArc = arcsFin.filter(a => a.v).sort((a, b) => b.v - a.v || b.iss.length - a.iss.length)[0];
+  return { mk, tot, readingDays: days.length, best, longest, prev, arcsFin: arcsFin.length, chFin, topArc, topChar: tc ? [charName(+tc[0]), tc[1]] : null, topWriter: tw ? [meta.writers[+tw[0]], tw[1]] : null, mainCh: mainCh ? chById[+mainCh[0]] : curChapter() };
+}
+const monthName = mk => { const [y, m] = mk.split('-'); return FULLMON[+m - 1] + ' ' + y; };
+function wrappedView() {
+  if (!allLoaded) return '<p class="status">Gathering the month…</p>';
+  const months = [...new Set(Object.keys(allDays()).map(d => d.slice(0, 7)))].sort().reverse();
+  if (!months.length) return '<div class="empty">Your first Wrapped card appears after you read something.</div>';
+  if (!months.includes(wrapMonth)) wrapMonth = months[0];
+  const W = monthStats(wrapMonth), c = W.mainCh, diff = W.tot - W.prev;
+  return `<div class="tabs2">${months.map(k => `<button class="chip${k === wrapMonth ? ' on' : ''}" data-act="wrapm" data-m="${k}">${monthName(k)}</button>`).join('')}</div>
+  <section class="wrap cover" id="wrapcard" style="${coverStyle(c)}">${coverArt(c)}
+    <div class="wi"><span class="k">Read-Through Wrapped</span><h2>${monthName(wrapMonth)}</h2>
+    <div class="big"><b>${fmt(W.tot)}</b><span>issues read${W.prev ? ` · ${diff >= 0 ? '+' : ''}${fmt(diff)} vs. last month` : ''}</span></div>
+    <div class="wg">
+      <div><b>${W.readingDays}</b><span>reading days</span></div>
+      <div><b>${W.longest}</b><span>longest streak</span></div>
+      <div><b>${W.best ? W.best[1] : 0}</b><span>best day${W.best ? ', ' + esc(short(W.best[0])) : ''}</span></div>
+      <div><b>${W.arcsFin}</b><span>arcs finished</span></div>
+    </div>
+    ${W.topArc ? `<p><span>Top arc</span>${esc(W.topArc.name)} <em>${starTxt(W.topArc.v)}</em></p>` : ''}
+    ${W.topWriter ? `<p><span>Most-read writer</span>${esc(W.topWriter[0])} <em>${W.topWriter[1]} issues</em></p>` : ''}
+    ${W.topChar ? `<p><span>Most-read character</span>${esc(W.topChar[0])} <em>${W.topChar[1]} issues</em></p>` : ''}
+    ${W.chFin.length ? `<p><span>Chapters finished</span>${W.chFin.map(x => esc(x.name)).join(', ')}</p>` : ''}
+    </div></section>
+  <button class="btn red" style="width:100%;margin-top:12px" data-act="wrapsave">Save as image</button>`;
+}
+async function saveWrapped() {
+  const W = monthStats(wrapMonth), c = W.mainCh, w = 1080, h = 1350, cv = document.createElement('canvas'); cv.width = w; cv.height = h; const x = cv.getContext('2d');
+  try { await document.fonts.ready; } catch (e) { }
+  const g = x.createLinearGradient(0, 0, w, h); g.addColorStop(0, c.colors[0]); g.addColorStop(1, c.colors[1]); x.fillStyle = g; x.fillRect(0, 0, w, h);
+  try {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 400" width="${w}" height="${w * 4 / 3}" preserveAspectRatio="xMidYMid slice">${ART[c.id] ? ART[c.id]() : ''}</svg>`;
+    const img = new Image(); img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg); await img.decode();
+    x.globalAlpha = .55; x.drawImage(img, 0, -40, w, w * 4 / 3); x.globalAlpha = 1;
+  } catch (e) { }
+  const sh = x.createLinearGradient(0, 0, 0, h); sh.addColorStop(0, 'rgba(0,0,0,.15)'); sh.addColorStop(.45, 'rgba(0,0,0,.55)'); sh.addColorStop(1, 'rgba(0,0,0,.88)'); x.fillStyle = sh; x.fillRect(0, 0, w, h);
+  x.fillStyle = '#fff'; x.textBaseline = 'alphabetic';
+  x.font = '600 34px Inter, sans-serif'; x.globalAlpha = .85; x.fillText('READ-THROUGH WRAPPED', 80, 120); x.globalAlpha = 1;
+  x.font = 'italic 800 110px "Barlow Condensed", sans-serif'; x.fillText(monthName(wrapMonth), 80, 230);
+  x.font = '800 300px "Barlow Condensed", sans-serif'; x.fillText(fmt(W.tot), 72, 540);
+  x.font = '500 40px Inter, sans-serif'; x.globalAlpha = .9; x.fillText('issues read', 84, 600); x.globalAlpha = 1;
+  const cells = [[W.readingDays, 'reading days'], [W.longest, 'longest streak'], [W.best ? W.best[1] : 0, 'best day'], [W.arcsFin, 'arcs finished']];
+  cells.forEach(([v, l], i) => { const cx = 80 + (i % 2) * 470, cy = 720 + Math.floor(i / 2) * 150; x.font = '800 96px "Barlow Condensed", sans-serif'; x.fillText(String(v), cx, cy); x.font = '500 32px Inter, sans-serif'; x.globalAlpha = .85; x.fillText(l, cx, cy + 44); x.globalAlpha = 1; });
+  let y = 1060; const line = (k, v) => { if (!v) return; x.font = '700 26px Inter, sans-serif'; x.fillStyle = '#f5b51b'; x.fillText(k.toUpperCase(), 80, y); x.fillStyle = '#fff'; x.font = '600 40px Inter, sans-serif'; x.fillText(v.length > 44 ? v.slice(0, 43) + '…' : v, 80, y + 48); y += 110; };
+  line('Top arc', W.topArc ? W.topArc.name + '  ' + starTxt(W.topArc.v) : '');
+  line('Most-read writer', W.topWriter ? W.topWriter[0] : '');
+  if (y < 1250) line('Most-read character', W.topChar ? W.topChar[0] : '');
+  const blob = await new Promise(r => cv.toBlob(r, 'image/png')); if (!blob) { toast('Couldn’t make the image.'); return; }
+  const file = new File([blob], 'read-through-' + wrapMonth + '.png', { type: 'image/png' });
+  if (navigator.canShare && navigator.canShare({ files: [file] })) { try { await navigator.share({ files: [file], title: 'Read-Through Wrapped: ' + monthName(wrapMonth) }); return; } catch (e) { if (e && e.name === 'AbortError') return; } }
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = file.name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000); toast('Image saved');
+}
+
+/* ================= swipe on issue rows ================= */
+let sw = null, swFired = false;
+document.addEventListener('pointerdown', e => { const r = e.target.closest('.is'); if (!r || e.target.closest('.dt')) return; sw = { r, x: e.clientX, y: e.clientY, on: false, dx: 0 }; }, { passive: true });
+document.addEventListener('pointermove', e => {
+  if (!sw) return; const dx = e.clientX - sw.x, dy = e.clientY - sw.y;
+  if (!sw.on) { if (Math.abs(dy) > 12 && Math.abs(dy) > Math.abs(dx)) { sw = null; return; } if (Math.abs(dx) > 14 && Math.abs(dx) > Math.abs(dy) * 1.4) { sw.on = true; clearTimeout(lp); lp = null; sw.r.classList.add('swiping'); } else return; }
+  sw.dx = Math.max(-140, Math.min(140, dx)); sw.r.style.transform = `translateX(${sw.dx}px)`;
+  sw.r.dataset.swipe = sw.dx > 0 ? (sw.r.classList.contains('on') ? 'Unmark' : 'Read') : 'Set date';
+  sw.r.classList.toggle('sw-r', sw.dx > 0); sw.r.classList.toggle('sw-l', sw.dx < 0); sw.r.classList.toggle('arm', Math.abs(sw.dx) > 90);
+}, { passive: true });
+['pointerup', 'pointercancel'].forEach(t => document.addEventListener(t, e => {
+  if (!sw) return; const s = sw; sw = null; if (!s.on) return;
+  swFired = true; setTimeout(() => { swFired = false; }, 350);
+  s.r.classList.remove('swiping', 'arm'); s.r.style.transform = '';
+  const sid = +s.r.dataset.s, n = +s.r.dataset.n;
+  if (e.type === 'pointerup' && s.dx > 90) { if (navigator.vibrate) navigator.vibrate(10); toggle(sid, n); }
+  else if (e.type === 'pointerup' && s.dx < -90) issueSheet(sid, n);
+  setTimeout(() => s.r.classList.remove('sw-r', 'sw-l'), 220);
+}));
 
 /* ================= router ================= */
 let view = 'home', focus = null, flashN = null;
@@ -638,7 +853,7 @@ document.addEventListener('pointermove', e => { if (lp && (Math.abs(e.clientX - 
 document.addEventListener('contextmenu', e => { if (e.target.closest('.is')) e.preventDefault(); });
 
 document.addEventListener('click', e => {
-  if (lpFired) { lpFired = false; e.preventDefault(); return; }
+  if (lpFired || swFired) { lpFired = false; e.preventDefault(); return; }
   const b = e.target.closest('[data-act]'); if (!b) return;
   const a = b.dataset.act, s = +b.dataset.s, n = +b.dataset.n;
   if (a === 'scrim') { if (e.target === b) closeSheet(); return; }
@@ -661,6 +876,14 @@ document.addEventListener('click', e => {
     case 'savedate': { const v = $('rdate')?.value; if (!v || v > today()) { toast('Pick a date up to today.'); break; } closeSheet(); setDate(s, n, v); break; }
     case 'unmark': closeSheet(); unmark(s, n); break;
     case 'closesheet': closeSheet(); break;
+    case 'goalset': if (sheetOpen) { closeSheet(); setTimeout(goalSheet, 60); } else goalSheet(); break;
+    case 'goalpick': { const i = $('goalin'); if (i) i.value = b.dataset.v; break; }
+    case 'goalsave': { const v = Math.round(+($('goalin')?.value || 0)); if (!(v >= 1 && v <= 300)) { toast('Pick a number from 1 to 300.'); break; } appSettings.goal = v; saveSettings(); closeSheet(); render(); toast('Daily goal set to ' + v); break; }
+    case 'markupto': { const v = today(); closeSheet(); markUpTo(s, n, v); break; }
+    case 'tlopen': statTab = 'universe'; navTo('stats'); break;
+    case 'wrapm': wrapMonth = b.dataset.m; render(); break;
+    case 'wrapsave': saveWrapped(); break;
+    case 'celebgo': { const h = b.dataset.h; closeSheet(); setTimeout(() => navTo(h), 80); break; }
     case 'note': if (!guard()) break; if (sheetOpen) { sheetOpen = false; sheetHost.innerHTML = ''; history.back(); setTimeout(() => noteSheet(s, +b.dataset.a), 60); } else noteSheet(s, +b.dataset.a); break;
     case 'savenote': { const v = $('notetext')?.value; closeSheet(); saveNote(s, +b.dataset.a, v); break; }
     case 'delnote': closeSheet(); saveNote(s, +b.dataset.a, ''); break;
@@ -758,7 +981,7 @@ async function startFirebase() {
   F.onSnapshot(F.collection(db, 'progress'), { includeMetadataChanges: true }, async snap => {
     synced = true;
     if (!snap.metadata.fromCache) { clearTimeout(timer); note = ''; lastServer = new Date(); }
-    for (const d of snap.docs) { const sid = +d.id.slice(1); if (dirty[sid] || writing[sid]) continue; const v = d.data() || {}; prog[sid] = { reads: { ...(v.reads || {}) }, ratings: { ...(v.ratings || {}) }, notes: { ...(v.notes || {}) } }; }
+    for (const d of snap.docs) { if (d.id === 'settings') { if (!settingsDirty) { appSettings = { ...appSettings, ...(d.data() || {}) }; try { localStorage.setItem('rt-settings', JSON.stringify(appSettings)); } catch (e) { } } continue; } const sid = +d.id.slice(1); if (!chById[sid]) continue; if (dirty[sid] || writing[sid]) continue; const v = d.data() || {}; prog[sid] = { reads: { ...(v.reads || {}) }, ratings: { ...(v.ratings || {}) }, notes: { ...(v.notes || {}) } }; }
     if (!snap.metadata.fromCache) { serverEmpty = snap.empty; await maybeSeed(); }
     const cur = curChapter(); if (cat[cur.id] === undefined) loadCat(cur.id).then(() => render());
     if (!sheetOpen && document.activeElement?.id !== 'q') render();
