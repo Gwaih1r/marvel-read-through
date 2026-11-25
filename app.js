@@ -2,7 +2,7 @@ import { firebaseConfig } from './config.js';
 import { ART } from './art.js';
 
 const FB = 'https://www.gstatic.com/firebasejs/10.12.2/';
-const APP_VERSION = '2.4.4';
+const APP_VERSION = '2.5.0';
 
 /* ================= helpers ================= */
 const $ = id => document.getElementById(id);
@@ -160,7 +160,7 @@ function toggle(sid, n) {
   if (!guard()) return;
   const b = beforeState(sid);
   const rd = P(sid).reads, was = rd[n]; snapshot(sid);
-  if (was !== undefined) delete rd[n]; else { rd[n] = today(); popKey = sid + ':' + n; if (navigator.vibrate) navigator.vibrate(8); }
+  if (was !== undefined) delete rd[n]; else { rd[n] = today(); popKey = sid + ':' + n; buzz(10); }
   queue(sid); render();
   const r = issues(sid).find(x => x[1] === n);
   toast((was === undefined ? 'Read ' : 'Unmarked ') + (r ? r[2] : '#' + n), true);
@@ -179,6 +179,7 @@ function undo() { if (!lastUndo) return; const { sid, reads, ratings, notes } = 
 function rate(sid, ai, k) {
   if (!guard()) return;
   const rt = P(sid).ratings, cur = rt[ai];
+  buzz(6);
   if (cur === k) rt[ai] = k - .5; else if (cur === k - .5) delete rt[ai]; else rt[ai] = k;
   queue(sid); render();
 }
@@ -239,6 +240,28 @@ function arcSheet(sid, ai) {
     <button class="opt" data-act="closesheet">Cancel</button>`);
 }
 
+
+
+/* ================= haptics ================= */
+function hapticsOn() { try { return localStorage.getItem('haptics') !== 'off'; } catch (e) { return true; } }
+function buzz(p) { if (hapticsOn() && navigator.vibrate) try { navigator.vibrate(p); } catch (e) {} }
+
+/* ================= character colors ================= */
+// Plain hues keyed to the lead character or team. Colors only, nothing borrowed from a logo.
+const CHAR_HUE = { 310: '#f2b51d', 246: '#e8333a', 23: '#3f7be0', 307: '#f0c419', 133: '#3fae4f', 101: '#2f8ce8', 68: '#c2182b', 40: '#2d6fd6', 146: '#d9452b', 80: '#c8202f', 275: '#5aa2e8', 198: '#9aa0aa', 294: '#8c8cff', 43: '#e0416b', 34: '#8a63d2', 309: '#2aa7a0', 119: '#e07a2b', 180: '#c9ccd6', 276: '#4d8f6b', 116: '#ef6c1f', 290: '#5b7fd1', 87: '#7b4fd4', 98: '#d2a03a', 181: '#3c8fe0', 207: '#d8589a', 186: '#d93a3a', 45: '#d6262e', 235: '#36b06a', 141: '#4bb3c9', 35: '#bf2f3d', 41: '#f2b51d' };
+const charHue = id => CHAR_HUE[id] || '';
+
+/* ================= crossover paths ================= */
+const PATH_HUES = ['#ec1d24', '#3f7be0', '#f2b51d', '#36b06a', '#a86ee8', '#ef6c1f'];
+const seriesName = t => (t || '').split('#')[0].trim();
+function pathInfo(g) { // a reading path when an arc hops between two or more series
+  if (!g.a || g.iss.length < 3) return null;
+  const rows = [g.a, ...g.items.filter(x => x[0] === 's').map(x => x[1])];
+  const names = [...new Set(rows.map(r => seriesName(r[1])))];
+  if (names.length < 2) return null;
+  const color = {}; names.forEach((n, i) => color[n] = PATH_HUES[i % PATH_HUES.length]);
+  return { names, color };
+}
 
 /* ================= Marvel Comics app links ================= */
 const VIEWER = 'https://www.marvelcomicsapp.com/viewer/';
@@ -372,8 +395,8 @@ function chapterView(sid, focus) {
     let hd = '';
     if (g.a) {
       const A = arcs(sid).get(g.ai), v = rt[g.ai], rdn = iss.filter(x => rd[x[1]] !== undefined).length;
-      const tags = [A.event ? `<span class="tag ev">${esc(A.event)}</span>` : '', ...writerNames(A.writers).slice(0, 2).map(w => `<span class="tag">${esc(w)}</span>`), A.char != null && charName(A.char) ? `<span class="tag">${esc(charName(A.char))}</span>` : ''].join('');
-      hd = `<div class="ah"><div class="t${done ? ' done-t' : ''}">${esc(g.a[2] || g.a[1])}</div>
+      const tags = [...writerNames(A.writers).slice(0, 2).map(w => `<span class="tag">${esc(w)}</span>`), A.char != null && charName(A.char) ? `<span class="tag ch">${esc(charName(A.char))}</span>` : ''].join('');
+      hd = `${A.event ? `<div class="evbar"><span>Event</span>${esc(A.event)}</div>` : ''}<div class="ah"><div class="t${done ? ' done-t' : ''}">${esc(g.a[2] || g.a[1])}</div>
         <div class="hbtns">${readBtn(readLink(sid, iss, g.a))}<button class="more" data-act="arcsheet" data-s="${sid}" data-a="${g.ai}" aria-label="Arc options">${I.dots}</button></div>
         <span class="s">${esc(g.a[2] ? g.a[1] : '')}${g.a[2] && g.a[3] ? ' · ' : ''}${esc(pubRange(g.a[3]))}</span>
         ${tags ? `<div class="tags">${tags}</div>` : ''}
@@ -381,18 +404,20 @@ function chapterView(sid, focus) {
         <div class="arow"><div class="stars" role="group" aria-label="Rate this arc">${[1, 2, 3, 4, 5].map(k => `<button aria-label="${k} star${k > 1 ? 's' : ''}" data-act="rate" data-s="${sid}" data-a="${g.ai}" data-k="${k}">${starSvg(v >= k ? 1 : v === k - .5 ? .5 : 0)}</button>`).join('')}</div>
         <button class="fold" data-act="fold" data-k="${key}" aria-expanded="${isOpen}">${isOpen ? 'Hide issues' : `${fmt(rdn)} / ${plural(iss.length, 'issue')}`}</button></div></div>`;
     }
-    const items = isOpen ? g.items.map(x => {
-      if (x[0] === 's') return `<p class="sub">${esc(x[1][1])}${x[1][3] ? ' · ' + esc(pubRange(x[1][3])) : ''}</p>`;
+    const pth = pathInfo(g); let curS = g.a ? seriesName(g.a[1]) : '';
+    const items = isOpen ? (pth ? `<div class="pkey">${pth.names.map(n => `<span style="--sc:${pth.color[n]}">${esc(n)}</span>`).join('')}</div>` : '') + g.items.map(x => {
+      if (x[0] === 's') { curS = seriesName(x[1][1]); if (pth) return ''; return `<p class="sub">${esc(x[1][1])}${x[1][3] ? ' · ' + esc(pubRange(x[1][3])) : ''}</p>`; }
       if (x[0] === 'n') return `<p class="note">${esc(x[1])}</p>`;
       const on = rd[x[1]] !== undefined, isNx = nx && x[1] === nx[1];
       if (filter === 'unread' && on) return '';
       const who = isNx ? 'Up next' : [charName(x[5]), writerNames(x[6])[0]].filter(Boolean).join(' · ');
       const k = sid + ':' + x[1];
-      return `<button class="is${on ? ' on' : ''}${isNx ? ' nx' : ''}${popKey === k ? ' pop' : ''}${flashN === x[1] ? ' flash' : ''}" id="i${x[1]}" data-act="read" data-s="${sid}" data-n="${x[1]}" aria-pressed="${on}">
-        <span class="chk">${I.check}</span><span class="tt"><b>${esc(x[2])}</b>${who ? `<small>${esc(who)}</small>` : ''}</span>
+      return `<button ${pth ? `style="--sc:${pth.color[curS] || PATH_HUES[0]}" ` : ''}class="is${pth ? ' pt' : ''}${on ? ' on' : ''}${isNx ? ' nx' : ''}${popKey === k ? ' pop' : ''}${flashN === x[1] ? ' flash' : ''}" id="i${x[1]}" data-act="read" data-s="${sid}" data-n="${x[1]}" aria-pressed="${on}">
+        ${pth ? '<span class="pdot"></span>' : ''}<span class="chk">${I.check}</span><span class="tt"><b>${esc(x[2])}</b>${who ? `<small>${esc(who)}</small>` : ''}</span>
         <span class="dt" data-act="isheet" data-s="${sid}" data-n="${x[1]}">${on ? esc(short(rd[x[1]])) : '#' + x[1]}</span></button>`;
     }).join('') : '';
-    return `<section class="arc${justDone === key ? ' justdone' : ''}">${hd}${items}</section>`;
+    const acc = g.a ? charHue(arcs(sid).get(g.ai)?.char) : '';
+    return `<section class="arc${justDone === key ? ' justdone' : ''}${pth ? ' path' : ''}${acc ? ' acc' : ''}"${acc ? ` style="--acc:${acc}"` : ''}>${hd}${items}</section>`;
   }).join('');
   return head + banner() + chips + (body || `<div class="empty">${filter === 'unrated' ? 'Every finished arc in this chapter has a rating.' : 'Nothing unread here. This chapter is finished.'}</div>`);
 }
@@ -502,14 +527,35 @@ function heatmap(m) {
   const ds = Object.keys(m).sort(), first = ds.length ? monday(parse(ds[0])) : monday(new Date());
   const since = Math.round((monday(new Date()) - first) / 6048e5) + 1;
   const weeks = Math.max(12, Math.min(26, since + 1)), start = addDays(monday(new Date()), -7 * (weeks - 1)), t = today();
-  const vals = Object.values(m), mx = Math.max(1, ...vals);
-  let cells = '';
+  const goal = +appSettings.goal || 30; // shades follow the daily goal: a full-strength square means you hit it
+  const lvl = v => !v ? '' : v < goal * .25 ? 'l1' : v < goal * .6 ? 'l2' : v < goal ? 'l3' : 'l4';
+  let cells = '', months = '', lastMo = -1;
+  for (let w = 0; w < weeks; w++) {
+    const wd = addDays(start, w * 7), mo = wd.getMonth();
+    months += `<span>${mo !== lastMo && (w > 0 || wd.getDate() <= 7) ? APM[mo].replace('.', '') : ''}</span>`; lastMo = mo;
+  }
   for (let i = 0; i < weeks * 7; i++) {
     const d = iso(addDays(start, i)), v = m[d] || 0;
-    const l = d > t ? 'f' : !v ? '' : v <= mx * .25 ? 'l1' : v <= mx * .5 ? 'l2' : v <= mx * .75 ? 'l3' : 'l4';
-    cells += `<i class="${l}" title="${esc(short(d))}: ${v}"></i>`;
+    cells += d > t ? '<i class="f"></i>' : `<button class="${lvl(v)}${d === t ? ' td' : ''}" data-act="day" data-d="${d}" aria-label="${esc(longDate(d))}: ${plural(v, 'issue')}"></button>`;
   }
-  return `<div class="heat" role="img" aria-label="Issues read per day over the last ${weeks} weeks">${cells}</div><div class="heatk"><span>${esc(short(iso(start)))}</span><span>Stronger red, more issues</span><span>Today</span></div>`;
+  const bd = Object.entries(m).sort((a, b) => b[1] - a[1])[0];
+  return `<div class="hmw"><div class="hmm" style="grid-template-columns:repeat(${weeks},minmax(0,1fr))">${months}</div>
+    <div class="hmb"><div class="hmd"><span>M</span><span></span><span>W</span><span></span><span>F</span><span></span><span></span></div>
+    <div class="heat" role="group" aria-label="Issues read per day over the last ${weeks} weeks">${cells}</div></div>
+    <div class="heatk"><span>Less</span><i></i><i class="l1"></i><i class="l2"></i><i class="l3"></i><i class="l4"></i><span>Goal hit</span></div>
+    ${bd ? `<p class="hmn">Busiest day: <b>${esc(longDate(bd[0]))}</b>, ${plural(bd[1], 'issue')}. Tap any square to see what you read.</p>` : ''}</div>`;
+}
+function daySheet(d) {
+  const list = [];
+  for (const sid in prog) for (const n in prog[sid].reads) if (prog[sid].reads[n] === d) {
+    const r = cat[sid] && issues(sid).find(x => x[1] === +n), c = chById[sid];
+    list.push({ sid: +sid, n: +n, t: r ? r[2] : 'Issue #' + n, c: c ? (c.num ? 'Ch. ' + c.num : 'Prologue') : '' });
+  }
+  list.sort((a, b) => a.sid - b.sid || a.n - b.n);
+  openSheet(`<h3>${esc(longDate(d))}</h3><p>${list.length ? plural(list.length, 'issue') + ' read.' : 'Nothing logged this day.'}</p>
+    ${list.length ? `<div class="dlist">${list.map(x => `<button class="opt" data-act="daynav" data-h="ch-${x.sid}/${x.n}"><span><b>${esc(x.t)}</b><small>${esc(x.c)}</small></span></button>`).join('')}</div>` : ''}
+    <button class="opt" data-act="closesheet">Close</button>`);
+  if (list.some(x => !cat[x.sid])) loadAll().then(() => { if (sheetOpen) daySheet(d); });
 }
 function arcLine(a) { return `<button class="kv" style="width:100%;text-align:left" data-act="nav" data-h="ch-${a.sid}/${a.iss[0] ? a.iss[0][1] : ''}"><span>${esc(a.name)}<br><small style="color:var(--dim)">${a.ch.num ? 'Ch. ' + a.ch.num : 'Prologue'} · ${plural(a.iss.length, 'issue')}</small></span><span style="color:var(--gold);white-space:nowrap">${a.v ? starTxt(a.v) : 'Rate'}</span></button>`; }
 
@@ -600,7 +646,8 @@ function settingsView() {
   ${banner()}
   <section class="panel"><h3>Account</h3>${acct}</section>
   <section class="panel"><h3>Daily goal</h3>${kv('Issues per day', fmt(+appSettings.goal || 0))}<div class="row" style="margin-top:12px"><button class="btn line" data-act="goalset">Change goal</button></div></section>
-  <section class="panel"><h3>Appearance</h3><div class="seg" role="radiogroup" aria-label="Theme">${[['system', 'System'], ['dark', 'Dark'], ['light', 'Light']].map(([k, l]) => `<button role="radio" aria-checked="${th === k}" class="${th === k ? 'on' : ''}" data-act="theme" data-t="${k}">${l}</button>`).join('')}</div></section>
+  <section class="panel"><h3>Appearance</h3><div class="seg" role="radiogroup" aria-label="Theme">${[['system', 'System'], ['dark', 'Dark'], ['black', 'Black'], ['light', 'Light']].map(([k, l]) => `<button role="radio" aria-checked="${th === k}" class="${th === k ? 'on' : ''}" data-act="theme" data-t="${k}">${l}</button>`).join('')}</div><p class="phint">Black turns the background fully off on your phone's AMOLED screen.</p>
+    <button class="row tog" data-act="haptics" role="switch" aria-checked="${hapticsOn()}"><span><b>Haptics</b><small>A short buzz when you check off an issue, rate an arc or finish one</small></span><i class="sw${hapticsOn() ? ' on' : ''}"></i></button></section>
   <section class="panel"><h3>Sync</h3>${kv('Status', esc(sync))}${lastServer ? kv('Last synced', esc(lastServer.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }))) : ''}</section>
   <section class="panel"><h3>Backup</h3><p class="k" style="margin:0 0 12px">Save every check mark, date and rating to a file, or restore from one.</p>
     <div class="row"><button class="btn line" data-act="export">Download backup</button><label class="btn line" style="cursor:pointer">Restore backup<input id="imp" type="file" accept="application/json,.json" hidden></label></div></section>
@@ -641,8 +688,8 @@ function afterChange(sid, b) {
   const rd = P(sid).reads; let finished = null;
   for (const g of groups(sid)) if (g.a && !b.arcsDone.has(g.gi) && g.iss.length && g.iss.every(x => rd[x[1]] !== undefined)) { finished = g; break; }
   const chNow = readCount(sid) >= chById[sid].total;
-  if (chNow && !b.chDone) { chapterCelebration(sid); confetti(120); return; }
-  if (finished) { justDone = sid + '-' + finished.gi; setTimeout(() => { justDone = ''; }, 1800); render(); confetti(40); if (navigator.vibrate) navigator.vibrate([12, 40, 12]); setTimeout(() => toast('Arc finished: ' + (finished.a[2] || finished.a[1])), 50); }
+  if (chNow && !b.chDone) { buzz([20, 60, 20, 60, 40]); chapterCelebration(sid); confetti(120); return; }
+  if (finished) { justDone = sid + '-' + finished.gi; setTimeout(() => { justDone = ''; }, 1800); render(); confetti(40); buzz([14, 50, 14]); setTimeout(() => toast('Arc finished: ' + (finished.a[2] || finished.a[1])), 50); }
   if (goal && b.today < goal && t >= goal) { confetti(90); setTimeout(() => toast('Daily goal hit: ' + t + ' issues today.'), finished ? 2200 : 50); }
 }
 function chapterCelebration(sid) {
@@ -905,6 +952,8 @@ document.addEventListener('click', e => {
     case 'jump': { const el = app.querySelector('.is.nx'); if (el) el.scrollIntoView({ block: 'center', behavior: 'smooth' }); break; }
     case 'stattab': statTab = b.dataset.t; render(); window.scrollTo(0, 0); break;
     case 'arcsheet': arcSheet(s, +b.dataset.a); break;
+    case 'day': daySheet(b.dataset.d); break;
+    case 'daynav': { const h = b.dataset.h; closeSheet(); setTimeout(() => navTo(h), 80); break; }
     case 'arcread': closeSheet(); arcAll(s, +b.dataset.a, true); break;
     case 'arcunread': closeSheet(); arcAll(s, +b.dataset.a, false); break;
     case 'clearrate': closeSheet(); clearRating(s, +b.dataset.a); break;
@@ -924,6 +973,7 @@ document.addEventListener('click', e => {
     case 'savenote': { const v = $('notetext')?.value; closeSheet(); saveNote(s, +b.dataset.a, v); break; }
     case 'delnote': closeSheet(); saveNote(s, +b.dataset.a, ''); break;
     case 'theme': localStorage.setItem('theme', b.dataset.t); applyTheme(); render(); break;
+    case 'haptics': try { localStorage.setItem('haptics', hapticsOn() ? 'off' : 'on'); } catch (e) {} if (hapticsOn()) buzz(12); render(); break;
     case 'export': exportBackup(); break;
     case 'doimport': closeSheet(); doImport(); break;
     case 'signout': if (fb) fb.signOut(fb.auth); break;
@@ -945,9 +995,10 @@ window.addEventListener('offline', () => render());
 /* ================= theme ================= */
 const mq = matchMedia('(prefers-color-scheme: light)');
 function applyTheme() {
-  const t = localStorage.getItem('theme') || 'system', light = t === 'light' || (t === 'system' && mq.matches);
+  const t = localStorage.getItem('theme') || 'system', light = t === 'light' || (t === 'system' && mq.matches), black = t === 'black';
   document.documentElement.dataset.theme = light ? 'light' : 'dark';
-  document.querySelector('meta[name=theme-color]').setAttribute('content', light ? '#f3f3f5' : '#0b0b0e');
+  if (black) document.documentElement.dataset.black = '1'; else delete document.documentElement.dataset.black;
+  document.querySelector('meta[name=theme-color]').setAttribute('content', light ? '#f3f3f5' : black ? '#000000' : '#0b0b0e');
 }
 mq.addEventListener?.('change', applyTheme);
 applyTheme();
