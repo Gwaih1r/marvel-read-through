@@ -1,0 +1,16 @@
+{
+  "name": "Marvel Read-Through",
+  "short_name": "Read-Through",
+  "description": "Modern-era Marvel reading tracker in Continuity Guide order",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0f0f12",
+  "theme_color": "#e0262f",
+  "icons": [
+    {"src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png"},
+    {"src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png"},
+    {"src": "icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}
+  ]
+}
