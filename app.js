@@ -1,7 +1,7 @@
 import { firebaseConfig } from './config.js';
 
 const FB = 'https://www.gstatic.com/firebasejs/10.12.2/';
-const APP_VERSION = '2.0.1';
+const APP_VERSION = '2.0.2';
 
 /* ================= helpers ================= */
 const $ = id => document.getElementById(id);
@@ -32,6 +32,7 @@ function pubRange(s) {
   if (!b || b.mo < 0 || (a.mo === b.mo && a.y === b.y)) return FULLMON[a.mo] + ' ' + a.y;
   return a.y === b.y ? FULLMON[a.mo] + ' to ' + FULLMON[b.mo] + ' ' + b.y : FULLMON[a.mo] + ' ' + a.y + ' to ' + FULLMON[b.mo] + ' ' + b.y;
 }
+const chLabel = c => c.num ? 'Chapter ' + c.num + ': ' + c.name : c.name;
 const avg = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0;
 
 const I = {
@@ -225,7 +226,7 @@ function banner() {
 const coverStyle = c => `--c1:${c.colors[0]};--c2:${c.colors[1]}`;
 function coverTile(c, cur) {
   const r = readCount(c.id), p = Math.min(100, r / c.total * 100), done = r >= c.total;
-  return `<button class="cv cover${c === cur ? ' cur' : ''}" style="${coverStyle(c)}" data-act="nav" data-h="ch-${c.id}" aria-label="Chapter ${c.num}: ${esc(c.name)}, ${fmt(r)} of ${fmt(c.total)} read">
+  return `<button class="cv cover${c === cur ? ' cur' : ''}" style="${coverStyle(c)}" data-act="nav" data-h="ch-${c.id}" aria-label="${esc(chLabel(c))}, ${fmt(r)} of ${fmt(c.total)} read">
     ${done ? '<span class="badge">Done</span>' : c === cur ? '<span class="badge">Reading</span>' : ''}
     <span class="num">${c.num || 'P'}</span>
     <span><span class="lab">${c.num ? 'Chapter ' + c.num + ' · ' : ''}${esc(c.years)}</span><span class="nm" style="display:block">${esc(c.name)}</span>
@@ -241,14 +242,14 @@ function home() {
   const m = allDays(), t = today(), tot = totalRead(), guide = guideTotal();
   const cur = curChapter(), ready = !!cat[cur.id], nx = ready ? nextUp(cur.id) : null;
   let hero;
-  if (!ready) hero = `<section class="hero cover" style="${coverStyle(cur)}"><div class="eyebrow"><span>Chapter ${cur.num}: ${esc(cur.name)}</span></div><h1>${cat[cur.id] === null ? 'Couldn’t load this chapter' : 'Loading…'}</h1></section>`;
-  else if (!nx) hero = `<section class="hero cover" style="${coverStyle(cur)}"><div class="eyebrow"><span>Chapter ${cur.num}: ${esc(cur.name)}</span></div><h1>All caught up</h1><p class="arcline">Every issue in the guide is checked off.</p></section>`;
+  if (!ready) hero = `<section class="hero cover" style="${coverStyle(cur)}"><div class="eyebrow"><span>${esc(chLabel(cur))}</span></div><h1>${cat[cur.id] === null ? 'Couldn’t load this chapter' : 'Loading…'}</h1></section>`;
+  else if (!nx) hero = `<section class="hero cover" style="${coverStyle(cur)}"><div class="eyebrow"><span>${esc(chLabel(cur))}</span></div><h1>All caught up</h1><p class="arcline">Every issue in the guide is checked off.</p></section>`;
   else {
     const g = arcOfIssue(cur.id, nx[1]), list = g ? g.iss : [nx], pos = list.findIndex(r => r[1] === nx[1]);
     const rdc = list.filter(r => isRead(cur.id, r[1])).length;
     const who = [charName(nx[5]), writerNames(nx[6])[0]].filter(Boolean).join(' · ');
     hero = `<section class="hero cover" style="${coverStyle(cur)}">
-      <div class="eyebrow"><span>Up next · Chapter ${cur.num}: ${esc(cur.name)}</span><span>${fmt(readCount(cur.id))} / ${fmt(cur.total)}</span></div>
+      <div class="eyebrow"><span>Up next · ${esc(chLabel(cur))}</span><span>${fmt(readCount(cur.id))} / ${fmt(cur.total)}</span></div>
       <h1>${esc(nx[2])}</h1>
       <p class="arcline">${g && g.a ? esc(g.a[2] || g.a[1]) : ''}${who ? ' <span style="opacity:.75">· ' + esc(who) + '</span>' : ''}</p>
       ${list.length > 1 ? (list.length <= 24 ? `<div class="arcbar">${list.map(r => `<i class="${isRead(cur.id, r[1]) ? 'on' : ''}"></i>`).join('')}</div>`
@@ -492,7 +493,7 @@ function statsView() {
       ${kv('Daily average, last 30 days', S.avg30.toFixed(1))}
       ${kv('Average per reading day', S.perDay.toFixed(1))}</section>
     <section class="panel"><h3>At this pace</h3><p class="k">Based on your average of ${S.pace.toFixed(1)} a day over the last ${plural(S.spanDays, 'day')}.</p>
-      ${kv(`Finish Chapter ${S.cur.num}: ${esc(S.cur.name)}`, S.chFinish ? esc(longDate(S.chFinish)) : '—')}
+      ${kv(`Finish ${esc(chLabel(S.cur))}`, S.chFinish ? esc(longDate(S.chFinish)) : '—')}
       ${kv('Finish the whole guide', S.guideFinish ? esc(longDate(S.guideFinish)) : '—')}
       ${kv('Issues left in the guide', fmt(S.guide - S.tot))}</section>
     <section class="panel"><h3>By weekday</h3><div class="rows">${S.dow.map((v, i) => hbar(DOW[i], v, dmax)).join('')}</div></section>`;
