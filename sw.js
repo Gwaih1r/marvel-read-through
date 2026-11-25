@@ -1,14 +1,15 @@
 // Bump VERSION whenever the app changes so installed copies pick up the update.
-const VERSION = 'mrt-v2.6.0';
+const VERSION = 'mrt-v2.6.1';
 const SHELL = ['./', 'index.html', 'app.js', 'app.css', 'art.js', 'config.js', 'manifest.json', 'data/chapters.json', 'data/meta.json', 'data/recaps.json',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/maskable-512.png'];
 const CHAPTERS = Array.from({ length: 26 }, (_, i) => 'data/c' + (100 + i) + '.json');
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(VERSION).then(async c => {
-    await c.addAll(SHELL);
+    // cache: 'reload' skips the browser's HTTP cache, so a new version never installs an old file.
+await c.addAll(SHELL.map(u => new Request(u, { cache: 'reload' })));
     // Chapter files are warmed in the background so search and stats work offline.
-    c.addAll(CHAPTERS).catch(() => { });
+    c.addAll(CHAPTERS.map(u => new Request(u, { cache: 'reload' }))).catch(() => { });
     fetch('data/seed.json').then(r => r.ok && c.put('data/seed.json', r)).catch(() => { });
   }));
 });
