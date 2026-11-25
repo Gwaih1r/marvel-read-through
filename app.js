@@ -2,7 +2,7 @@ import { firebaseConfig } from './config.js';
 import { ART } from './art.js';
 
 const FB = 'https://www.gstatic.com/firebasejs/10.12.2/';
-const APP_VERSION = '2.3.0';
+const APP_VERSION = '2.3.1';
 
 /* ================= helpers ================= */
 const $ = id => document.getElementById(id);
@@ -300,6 +300,7 @@ function home() {
   return `${appbar('Read-Through', 'Modern-era Marvel · Continuity Guide order')}
   ${banner()}${hero}
   ${goalCard(m)}
+  ${(() => { const u = allLoaded ? unratedArcs().length : 0; return u ? `<button class="nudge" data-act="unratednav">${I.star}<span><b>${plural(u, 'finished arc')}</b> ${u === 1 ? 'needs' : 'need'} a rating</span><em>Rate</em></button>` : ''; })()}
   <div class="figs" style="grid-template-columns:repeat(3,minmax(0,1fr))">
     <div class="fig"><b>${fmt(tot)}</b><span>issues read</span></div>
     <div class="fig"><b>${fmt(wsum)}</b><span>this week</span></div>
@@ -331,13 +332,14 @@ function chapterView(sid, focus) {
     <div class="prog"><span>${fmt(r)} of ${fmt(c.total)} read</span><span>${p.toFixed(1)}%</span></div><div class="meter"><i style="width:${p}%"></i></div>
     <div class="acts">${r < c.total ? `<button class="btn prim" style="flex:0 1 auto" data-act="jump">${I.down}Jump to next issue</button>` : ''}<a class="btn ghost" href="${c.url.startsWith('https://') ? esc(c.url) : '#'}" target="_blank" rel="noopener">${I.ext}Guide page</a></div>
   </header>`;
-  const chips = `<div class="chips" role="tablist"><button class="chip${filter === 'all' ? ' on' : ''}" data-act="filter" data-f="all">All arcs</button><button class="chip${filter === 'unread' ? ' on' : ''}" data-act="filter" data-f="unread">Unread only</button><button class="chip" data-act="foldall" data-s="${sid}">Collapse finished</button></div>`;
+  const chips = `<div class="chips" role="tablist"><button class="chip${filter === 'all' ? ' on' : ''}" data-act="filter" data-f="all">All arcs</button><button class="chip${filter === 'unread' ? ' on' : ''}" data-act="filter" data-f="unread">Unread only</button><button class="chip${filter === 'unrated' ? ' on' : ''}" data-act="filter" data-f="unrated">Needs rating</button><button class="chip" data-act="foldall" data-s="${sid}">Collapse finished</button></div>`;
   if (rows === undefined) return head + banner() + '<p class="status">Loading issues…</p>';
   if (rows === null) return head + banner() + '<div class="empty">This chapter couldn’t load. Check your connection and try again.</div>';
   const rd = P(sid).reads, rt = P(sid).ratings, nx = nextUp(sid);
   const body = groups(sid).map(g => {
     const iss = g.iss, done = iss.length > 0 && iss.every(x => rd[x[1]] !== undefined);
     if (filter === 'unread' && done) return '';
+    if (filter === 'unrated' && (!done || !g.a || rt[g.ai])) return '';
     const key = sid + '-' + g.gi, hasFocus = flashN && iss.some(x => x[1] === flashN);
     if (hasFocus) open[key] = true;
     const isOpen = hasFocus || (open[key] ?? (!done || iss.some(x => nx && x[1] === nx[1])));
@@ -366,7 +368,7 @@ function chapterView(sid, focus) {
     }).join('') : '';
     return `<section class="arc${justDone === key ? ' justdone' : ''}">${hd}${items}</section>`;
   }).join('');
-  return head + banner() + chips + (body || '<div class="empty">Nothing unread here. This chapter is finished.</div>');
+  return head + banner() + chips + (body || `<div class="empty">${filter === 'unrated' ? 'Every finished arc in this chapter has a rating.' : 'Nothing unread here. This chapter is finished.'}</div>`);
 }
 
 /* ================= SEARCH ================= */
@@ -531,7 +533,7 @@ function statsView() {
       <div class="fig"><b>${S.avgRating ? S.avgRating.toFixed(2) : '—'}</b><span>average stars</span></div>
       <div class="fig"><b>${S.unrated.length}</b><span>finished, not rated</span></div></div>
     <section class="panel"><h3>Star spread</h3><div class="spread">${S.spread.map(([s, n]) => `<div><span class="st">${starTxt(s)}</span><div class="meter"><i style="width:${n / smax * 100}%"></i></div><span>${n}</span></div>`).join('')}</div></section>
-    ${S.unrated.length ? `<section class="panel"><h3>Finished, waiting on a rating</h3>${S.unrated.slice(-6).reverse().map(arcLine).join('')}${S.unrated.length > 6 ? `<p class="k" style="margin:10px 0 0">Plus ${fmt(S.unrated.length - 6)} more.</p>` : ''}</section>` : ''}
+    ${S.unrated.length ? `<section class="panel" id="unrated"><h3>Finished, waiting on a rating</h3><p class="k">Most recently finished first. Tap one to jump to it.</p>${unratedArcs().map(arcLine).join('')}</section>` : ''}
     ${S.top.length ? `<section class="panel"><h3>Highest rated</h3>${S.top.map(arcLine).join('')}</section>` : ''}
     ${S.low.length > 2 ? `<section class="panel"><h3>Lowest rated</h3>${S.low.map(arcLine).join('')}</section>` : ''}
     ${S.byChapter.length ? `<section class="panel"><h3>By chapter</h3>${S.byChapter.map(([c, a, n]) => kv(esc((c.num ? c.num + '. ' : '') + c.name), `<span style="color:var(--gold)">${a.toFixed(2)}</span> · ${plural(n, 'arc')}`)).join('')}</section>` : ''}
@@ -670,6 +672,13 @@ function timeline(full) {
   </section>`;
 }
 
+/* ================= unrated finished arcs ================= */
+function unratedArcs() {
+  const out = [];
+  for (const c of chapters) { if (!cat[c.id]) continue; const rd = P(c.id).reads, rt = P(c.id).ratings;
+    for (const a of arcs(c.id).values()) if (a.iss.length && !rt[a.ai] && a.iss.every(r => rd[r[1]] !== undefined)) out.push({ ...a, ch: c, fin: a.iss.map(r => rd[r[1]]).sort().pop() || '' }); }
+  return out.sort((x, y) => (x.fin < y.fin ? 1 : x.fin > y.fin ? -1 : 0));
+}
 /* ================= goal card ================= */
 function goalCard(m) {
   const goal = +appSettings.goal || 0, t = m[today()] || 0, s = streakFrom(m);
@@ -880,6 +889,7 @@ document.addEventListener('click', e => {
     case 'goalpick': { const i = $('goalin'); if (i) i.value = b.dataset.v; break; }
     case 'goalsave': { const v = Math.round(+($('goalin')?.value || 0)); if (!(v >= 1 && v <= 300)) { toast('Pick a number from 1 to 300.'); break; } appSettings.goal = v; saveSettings(); closeSheet(); render(); toast('Daily goal set to ' + v); break; }
     case 'markupto': { const v = today(); closeSheet(); markUpTo(s, n, v); break; }
+    case 'unratednav': statTab = 'ratings'; navTo('stats'); setTimeout(() => $('unrated')?.scrollIntoView({ block: 'start', behavior: 'smooth' }), 400); break;
     case 'tlopen': statTab = 'universe'; navTo('stats'); break;
     case 'wrapm': wrapMonth = b.dataset.m; render(); break;
     case 'wrapsave': saveWrapped(); break;
@@ -1033,5 +1043,5 @@ if ('serviceWorker' in navigator) {
   route();
   const cur = curChapter(); loadCat(cur.id).then(() => render());
   if (firebaseConfig) { try { await startFirebase(); } catch (e) { synced = true; note = 'Couldn’t reach the sync service. Showing what’s saved on this device.'; render(); } }
-  setTimeout(() => loadAll(), 1500);
+  setTimeout(() => loadAll().then(() => { if (view === 'home' && !sheetOpen) render(); }), 1500);
 })();
