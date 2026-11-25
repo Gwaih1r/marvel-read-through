@@ -2,7 +2,7 @@ import { firebaseConfig } from './config.js';
 import { ART } from './art.js';
 
 const FB = 'https://www.gstatic.com/firebasejs/10.12.2/';
-const APP_VERSION = '2.5.1';
+const APP_VERSION = '2.6.0';
 
 /* ================= helpers ================= */
 const $ = id => document.getElementById(id);
@@ -37,6 +37,7 @@ const chLabel = c => c.num ? 'Chapter ' + c.num + ': ' + c.name : c.name;
 const avg = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0;
 
 const I = {
+  photo: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M21 16l-5-5-8 8"/></svg>',
   book: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H11v16H5.5A1.5 1.5 0 0 1 4 18.5zM20 5.5A1.5 1.5 0 0 0 18.5 4H13v16h5.5a1.5 1.5 0 0 0 1.5-1.5z"/></svg>',
   home: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>',
   books: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="18" rx="1.5"/><rect x="14" y="3" width="7" height="18" rx="1.5"/><path d="M6.5 7v3M17.5 7v3"/></svg>',
@@ -263,6 +264,44 @@ function pathInfo(g) { // a reading path when an arc hops between two or more se
   return { names, color };
 }
 
+
+/* ================= custom chapter covers ================= */
+function coverSheet(sid) {
+  const c = chById[sid], cv = covers[sid], has = cv && cv.img;
+  openSheet(`<h3>${esc(c.name)} cover</h3><p>${has ? 'Your photo is the cover for this chapter everywhere in the app.' : 'Pick a photo from your phone. It gets resized and synced, so it shows on every device.'}</p>
+    <label class="opt">${I.photo}${has ? 'Choose a different photo' : 'Choose a photo'}<input type="file" accept="image/*" data-cover="${sid}" hidden></label>
+    ${has ? `<div class="seg" role="radiogroup" aria-label="Focus" style="margin:6px 0 8px;grid-template-columns:repeat(3,minmax(0,1fr))">${[['top', 'Top'], ['center', 'Middle'], ['bottom', 'Bottom']].map(([k, l]) => `<button role="radio" aria-checked="${(cv.pos || 'center') === k}" class="${(cv.pos || 'center') === k ? 'on' : ''}" data-act="coverpos" data-s="${sid}" data-p="${k}">${l}</button>`).join('')}</div><p class="phint" style="margin-top:0">Which part of the photo to keep when it gets cropped.</p>
+    <button class="opt dan" data-act="coverdel" data-s="${sid}">${I.undo}Go back to the original cover</button>` : ''}
+    <button class="opt" data-act="closesheet">Done</button>`);
+}
+async function shrinkImage(file) {
+  const bmp = await createImageBitmap(file).catch(() => null);
+  const img = bmp || await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = URL.createObjectURL(file); });
+  const w0 = img.width, h0 = img.height;
+  for (const [max, q] of [[1000, .82], [900, .72], [760, .64], [620, .58]]) {
+    const k = Math.min(1, max / Math.max(w0, h0)), w = Math.round(w0 * k), h = Math.round(h0 * k);
+    const cv = document.createElement('canvas'); cv.width = w; cv.height = h; cv.getContext('2d').drawImage(img, 0, 0, w, h);
+    const url = cv.toDataURL('image/jpeg', q);
+    if (url.length < 650000) return url; // stays well under Firestore's 1 MB document limit
+  }
+  throw new Error('too big');
+}
+async function saveCover(sid, data) {
+  if (data) covers[sid] = { ...(covers[sid] || {}), ...data }; else delete covers[sid];
+  saveCoverCache(); render();
+  if (!fb || !canWrite) return;
+  try { await fb.setDoc(fb.doc(fb.db, 'progress', 'cover-' + sid), data ? { ...covers[sid], updated: Date.now() } : { img: '', updated: Date.now() }); }
+  catch (e) { toast('The cover saved on this phone but didn’t sync. Try again when you’re online.'); }
+}
+async function pickCover(sid, file) {
+  if (!file || !/^image\//.test(file.type)) { toast('That file isn’t an image.'); return; }
+  toast('Resizing your photo…');
+  let url; try { url = await shrinkImage(file); } catch (e) { toast('Couldn’t read that photo. Try a different one.'); return; }
+  await saveCover(sid, { img: url, pos: (covers[sid] && covers[sid].pos) || 'center' });
+  if (sheetOpen) coverSheet(sid);
+  toast('Cover updated');
+}
+
 /* ================= Marvel Comics app links ================= */
 const VIEWER = 'https://www.marvelcomicsapp.com/viewer/';
 const seriesMemo = {};
@@ -296,7 +335,10 @@ function banner() {
 }
 const coverStyle = c => `--c1:${c.colors[0]};--c2:${c.colors[1]}`;
 const artMemo = {};
-const coverArt = (c, cls = '') => ART[c.id] ? `<svg class="art ${cls}" viewBox="0 0 300 400" preserveAspectRatio="xMidYMid slice" aria-hidden="true">${artMemo[c.id] || (artMemo[c.id] = ART[c.id]())}</svg>` : '';
+let covers = (() => { try { return JSON.parse(localStorage.getItem('rt-covers') || '{}'); } catch (e) { return {}; } })();
+const POS = { top: '50% 15%', center: '50% 50%', bottom: '50% 85%' };
+function saveCoverCache() { try { localStorage.setItem('rt-covers', JSON.stringify(covers)); } catch (e) { } }
+const coverArt = (c, cls = '') => covers[c.id] && covers[c.id].img ? `<img class="art photo ${cls}" src="${covers[c.id].img}" alt="" style="object-position:${POS[covers[c.id].pos] || POS.center}">` : ART[c.id] ? `<svg class="art ${cls}" viewBox="0 0 300 400" preserveAspectRatio="xMidYMid slice" aria-hidden="true">${artMemo[c.id] || (artMemo[c.id] = ART[c.id]())}</svg>` : '';
 function coverTile(c, cur) {
   const r = readCount(c.id), p = Math.min(100, r / c.total * 100), done = r >= c.total;
   return `<button class="cv cover${c === cur ? ' cur' : ''}" style="${coverStyle(c)}" data-act="nav" data-h="ch-${c.id}" aria-label="${esc(chLabel(c))}, ${fmt(r)} of ${fmt(c.total)} read">${coverArt(c)}
@@ -379,7 +421,7 @@ function chapterView(sid, focus) {
     <div class="k">${c.num ? 'Chapter ' + c.num : 'Prologue'} · ${esc(c.years)}</div>
     <h1>${esc(c.name)}</h1><p>${esc(c.summary)}</p>
     <div class="prog"><span>${fmt(r)} of ${fmt(c.total)} read</span><span>${p.toFixed(1)}%</span></div><div class="meter"><i style="width:${p}%"></i></div>
-    <div class="acts">${r < c.total ? `<button class="btn prim" style="flex:0 1 auto" data-act="jump">${I.down}Jump to next issue</button>` : ''}<a class="btn ghost" href="${c.url.startsWith('https://') ? esc(c.url) : '#'}" target="_blank" rel="noopener">${I.ext}Guide page</a></div>
+    <div class="acts">${r < c.total ? `<button class="btn prim" style="flex:0 1 auto" data-act="jump">${I.down}Jump to next issue</button>` : ''}<a class="btn ghost" href="${c.url.startsWith('https://') ? esc(c.url) : '#'}" target="_blank" rel="noopener">${I.ext}Guide page</a>${canWrite || mode === 'preview' ? `<button class="btn ghost" data-act="coversheet" data-s="${sid}">${I.photo}Cover</button>` : ''}</div>
   </header>`;
   const chips = `<div class="chips" role="tablist"><button class="chip${filter === 'all' ? ' on' : ''}" data-act="filter" data-f="all">All arcs</button><button class="chip${filter === 'unread' ? ' on' : ''}" data-act="filter" data-f="unread">Unread only</button><button class="chip${filter === 'unrated' ? ' on' : ''}" data-act="filter" data-f="unrated">Needs rating</button><button class="chip" data-act="foldall" data-s="${sid}">Collapse finished</button></div>`;
   if (rows === undefined) return head + banner() + '<p class="status">Loading issues…</p>';
@@ -953,6 +995,9 @@ document.addEventListener('click', e => {
     case 'stattab': statTab = b.dataset.t; render(); window.scrollTo(0, 0); break;
     case 'arcsheet': arcSheet(s, +b.dataset.a); break;
     case 'day': daySheet(b.dataset.d); break;
+    case 'coversheet': coverSheet(s); break;
+    case 'coverpos': saveCover(s, { pos: b.dataset.p }).then(() => coverSheet(s)); break;
+    case 'coverdel': saveCover(s, null).then(() => { closeSheet(); toast('Back to the original cover'); }); break;
     case 'daynav': { const h = b.dataset.h; closeSheet(); setTimeout(() => navTo(h), 80); break; }
     case 'arcread': closeSheet(); arcAll(s, +b.dataset.a, true); break;
     case 'arcunread': closeSheet(); arcAll(s, +b.dataset.a, false); break;
@@ -987,7 +1032,7 @@ let qt;
 document.addEventListener('input', e => {
   if (e.target.id === 'q') { q = e.target.value; clearTimeout(qt); qt = setTimeout(() => { const r = $('results'); if (r) r.innerHTML = results(); }, 120); }
 });
-document.addEventListener('change', e => { if (e.target.id === 'imp' && e.target.files[0]) readImport(e.target.files[0]); });
+document.addEventListener('change', e => { if (e.target.id === 'imp' && e.target.files[0]) readImport(e.target.files[0]); if (e.target.dataset && e.target.dataset.cover && e.target.files[0]) pickCover(+e.target.dataset.cover, e.target.files[0]); });
 window.addEventListener('hashchange', route);
 window.addEventListener('online', () => render());
 window.addEventListener('offline', () => render());
@@ -1068,7 +1113,8 @@ async function startFirebase() {
   F.onSnapshot(F.collection(db, 'progress'), { includeMetadataChanges: true }, async snap => {
     synced = true;
     if (!snap.metadata.fromCache) { clearTimeout(timer); note = ''; lastServer = new Date(); }
-    for (const d of snap.docs) { if (d.id === 'settings') { if (!settingsDirty) { appSettings = { ...appSettings, ...(d.data() || {}) }; try { localStorage.setItem('rt-settings', JSON.stringify(appSettings)); } catch (e) { } } continue; } const sid = +d.id.slice(1); if (!chById[sid]) continue; if (dirty[sid] || writing[sid]) continue; const v = d.data() || {}; prog[sid] = { reads: { ...(v.reads || {}) }, ratings: { ...(v.ratings || {}) }, notes: { ...(v.notes || {}) } }; }
+    let covCh = false; for (const d of snap.docs) { if (d.id.startsWith('cover-')) { const k = +d.id.slice(6), v = d.data() || {}; if (v.img) { if (!covers[k] || covers[k].img !== v.img || covers[k].pos !== v.pos) { covers[k] = { img: v.img, pos: v.pos || 'center' }; covCh = true; } } else if (covers[k]) { delete covers[k]; covCh = true; } continue; } if (d.id === 'settings') { if (!settingsDirty) { appSettings = { ...appSettings, ...(d.data() || {}) }; try { localStorage.setItem('rt-settings', JSON.stringify(appSettings)); } catch (e) { } } continue; } const sid = +d.id.slice(1); if (!chById[sid]) continue; if (dirty[sid] || writing[sid]) continue; const v = d.data() || {}; prog[sid] = { reads: { ...(v.reads || {}) }, ratings: { ...(v.ratings || {}) }, notes: { ...(v.notes || {}) } }; }
+    if (covCh) saveCoverCache();
     if (!snap.metadata.fromCache) { serverEmpty = snap.empty; await maybeSeed(); }
     const cur = curChapter(); if (cat[cur.id] === undefined) loadCat(cur.id).then(() => render());
     if (!sheetOpen && document.activeElement?.id !== 'q') render();
