@@ -2,7 +2,7 @@ import { firebaseConfig } from './config.js';
 import { ART } from './art.js';
 
 const FB = 'https://www.gstatic.com/firebasejs/10.12.2/';
-const APP_VERSION = '2.1.0';
+const APP_VERSION = '2.2.0';
 
 /* ================= helpers ================= */
 const $ = id => document.getElementById(id);
@@ -51,19 +51,20 @@ const I = {
   cal: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>',
   undo: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/></svg>',
   star: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/></svg>',
+  pen: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></svg>',
   mark: '<svg viewBox="0 0 32 32" fill="none"><rect x="5" y="5" width="9" height="9" rx="1.5" fill="#fff"/><rect x="18" y="5" width="9" height="9" rx="1.5" fill="#fff"/><rect x="5" y="18" width="9" height="9" rx="1.5" fill="#fff"/><path d="M18.5 22.5l3 3 5.5-6.5" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>'
 };
 const STAR = 'M12 2.6l2.9 5.9 6.5.9-4.7 4.6 1.1 6.5L12 17.4l-5.8 3.1 1.1-6.5-4.7-4.6 6.5-.9z';
 const starSvg = fill => `<svg viewBox="0 0 24 24"><defs><clipPath id="h"><rect width="12" height="24"/></clipPath></defs><path class="bg" d="${STAR}"/>${fill === 1 ? `<path class="fg" d="${STAR}"/>` : fill === .5 ? `<path class="fg" d="${STAR}" clip-path="url(#h)"/>` : ''}</svg>`;
 
 /* ================= state ================= */
-let chapters = [], meta = null, cat = {}, prog = {}, loaded = false, synced = false, note = '';
+let recaps = {}, chapters = [], meta = null, cat = {}, prog = {}, loaded = false, synced = false, note = '';
 let mode = 'preview', user = null, canWrite = false, fb = null, lastServer = null;
 const dirty = {}, writing = {}, timers = {}, open = {};
 let lastUndo = null, popKey = '', filter = 'all', statTab = 'overview', q = '', authErr = '', importPending = null, swWaiting = null;
 const chById = {}, evIdx = {};
 
-const P = sid => prog[sid] || (prog[sid] = { reads: {}, ratings: {} });
+const P = sid => { const p = prog[sid] || (prog[sid] = { reads: {}, ratings: {} }); if (!p.notes) p.notes = {}; return p; };
 const readCount = sid => Object.keys(P(sid).reads).length;
 const guideTotal = () => chapters.reduce((a, c) => a + c.total, 0);
 const totalRead = () => chapters.reduce((a, c) => a + readCount(c.id), 0);
@@ -151,7 +152,7 @@ function guard() {
 }
 
 /* ================= actions ================= */
-function snapshot(sid, label) { lastUndo = { sid, reads: { ...P(sid).reads }, ratings: { ...P(sid).ratings } }; }
+function snapshot(sid, label) { lastUndo = { sid, reads: { ...P(sid).reads }, ratings: { ...P(sid).ratings }, notes: { ...P(sid).notes } }; }
 function toggle(sid, n) {
   if (!guard()) return;
   const rd = P(sid).reads, was = rd[n]; snapshot(sid);
@@ -168,7 +169,7 @@ function arcAll(sid, ai, read) {
   for (const r of a.iss) { if (read && rd[r[1]] === undefined) { rd[r[1]] = t; c++; } if (!read && rd[r[1]] !== undefined) { delete rd[r[1]]; c++; } }
   queue(sid); render(); toast((read ? 'Marked ' : 'Unmarked ') + plural(c, 'issue') + ' in ' + a.name, true);
 }
-function undo() { if (!lastUndo) return; const { sid, reads, ratings } = lastUndo; prog[sid] = { reads, ratings }; lastUndo = null; queue(sid); render(); toastHost.innerHTML = ''; }
+function undo() { if (!lastUndo) return; const { sid, reads, ratings, notes } = lastUndo; prog[sid] = { reads, ratings, notes }; lastUndo = null; queue(sid); render(); toastHost.innerHTML = ''; }
 function rate(sid, ai, k) {
   if (!guard()) return;
   const rt = P(sid).ratings, cur = rt[ai];
@@ -205,6 +206,20 @@ function issueSheet(sid, n) {
     ${d ? `<button class="opt dan" data-act="unmark" data-s="${sid}" data-n="${n}">${I.undo}Mark unread</button>` : ''}
     <button class="opt" data-act="closesheet">Cancel</button>`);
 }
+function noteSheet(sid, ai) {
+  const a = arcs(sid).get(ai); if (!a) return; const cur = P(sid).notes[ai] || '';
+  openSheet(`<h3>${esc(a.name)}</h3><p>A line or two to jog your memory later. It syncs with your other devices.</p>
+    <div class="field"><label for="notetext">Your note</label><textarea id="notetext" rows="4" maxlength="500">${esc(cur)}</textarea></div>
+    <button class="btn red" style="width:100%;margin-bottom:8px" data-act="savenote" data-s="${sid}" data-a="${ai}">Save note</button>
+    ${cur ? `<button class="opt dan" data-act="delnote" data-s="${sid}" data-a="${ai}">${I.undo}Delete note</button>` : ''}
+    <button class="opt" data-act="closesheet">Cancel</button>`);
+  setTimeout(() => $('notetext')?.focus(), 250);
+}
+function saveNote(sid, ai, text) {
+  if (!guard()) return; snapshot(sid); const t = (text || '').trim().slice(0, 500);
+  if (t) P(sid).notes[ai] = t; else delete P(sid).notes[ai];
+  queue(sid); render(); toast(t ? 'Note saved' : 'Note deleted', true);
+}
 function arcSheet(sid, ai) {
   const a = arcs(sid).get(ai); if (!a) return;
   const rd = P(sid).reads, left = a.iss.filter(r => rd[r[1]] === undefined).length, v = P(sid).ratings[ai];
@@ -212,6 +227,7 @@ function arcSheet(sid, ai) {
     ${left ? `<button class="opt" data-act="arcread" data-s="${sid}" data-a="${ai}">${I.checkDark}Mark ${left === a.iss.length ? 'all' : 'remaining ' + fmt(left)} read today</button>` : ''}
     ${left < a.iss.length ? `<button class="opt dan" data-act="arcunread" data-s="${sid}" data-a="${ai}">${I.undo}Mark whole arc unread</button>` : ''}
     ${v ? `<button class="opt" data-act="clearrate" data-s="${sid}" data-a="${ai}">${I.star}Clear rating</button>` : ''}
+    <button class="opt" data-act="note" data-s="${sid}" data-a="${ai}">${I.pen}${P(sid).notes[ai] ? 'Edit your note' : 'Add a note to remember it by'}</button>
     <button class="opt" data-act="closesheet">Cancel</button>`);
 }
 
@@ -327,6 +343,7 @@ function chapterView(sid, focus) {
         <button class="more" data-act="arcsheet" data-s="${sid}" data-a="${g.ai}" aria-label="Arc options">${I.dots}</button>
         <span class="s">${esc(g.a[2] ? g.a[1] : '')}${g.a[2] && g.a[3] ? ' · ' : ''}${esc(pubRange(g.a[3]))}</span>
         ${tags ? `<div class="tags">${tags}</div>` : ''}
+        ${(() => { const rc = recaps[sid] && recaps[sid][g.ai], nt = P(sid).notes[g.ai]; if (!done && !nt) return ''; return (done && rc ? `<p class="recap"><span>Recap</span>${esc(rc)}</p>` : '') + (nt ? `<button class="mynote" data-act="note" data-s="${sid}" data-a="${g.ai}"><span>Your note</span>${esc(nt)}</button>` : ''); })()}
         <div class="arow"><div class="stars" role="group" aria-label="Rate this arc">${[1, 2, 3, 4, 5].map(k => `<button aria-label="${k} star${k > 1 ? 's' : ''}" data-act="rate" data-s="${sid}" data-a="${g.ai}" data-k="${k}">${starSvg(v >= k ? 1 : v === k - .5 ? .5 : 0)}</button>`).join('')}</div>
         <button class="fold" data-act="fold" data-k="${key}" aria-expanded="${isOpen}">${isOpen ? 'Hide issues' : `${fmt(rdn)} / ${plural(iss.length, 'issue')}`}</button></div></div>`;
     }
@@ -644,6 +661,9 @@ document.addEventListener('click', e => {
     case 'savedate': { const v = $('rdate')?.value; if (!v || v > today()) { toast('Pick a date up to today.'); break; } closeSheet(); setDate(s, n, v); break; }
     case 'unmark': closeSheet(); unmark(s, n); break;
     case 'closesheet': closeSheet(); break;
+    case 'note': if (!guard()) break; if (sheetOpen) { sheetOpen = false; sheetHost.innerHTML = ''; history.back(); setTimeout(() => noteSheet(s, +b.dataset.a), 60); } else noteSheet(s, +b.dataset.a); break;
+    case 'savenote': { const v = $('notetext')?.value; closeSheet(); saveNote(s, +b.dataset.a, v); break; }
+    case 'delnote': closeSheet(); saveNote(s, +b.dataset.a, ''); break;
     case 'theme': localStorage.setItem('theme', b.dataset.t); applyTheme(); render(); break;
     case 'export': exportBackup(); break;
     case 'doimport': closeSheet(); doImport(); break;
@@ -684,10 +704,11 @@ async function readImport(file) {
   try {
     const j = JSON.parse(await file.text()), p = j.progress; if (!p || typeof p !== 'object') throw 0;
     const clean = {}; let n = 0;
-    for (const k in p) { const sid = +k; if (!chById[sid]) continue; const reads = {}, ratings = {};
+    for (const k in p) { const sid = +k; if (!chById[sid]) continue; const reads = {}, ratings = {}, notes = {};
       for (const [i, d] of Object.entries(p[k].reads || {})) if (/^\d{4}-\d\d-\d\d$/.test(d)) { reads[i] = d; n++; }
       for (const [i, v] of Object.entries(p[k].ratings || {})) if (typeof v === 'number' && v > 0 && v <= 5) ratings[i] = v;
-      clean[sid] = { reads, ratings }; }
+      for (const [i, v] of Object.entries(p[k].notes || {})) if (typeof v === 'string' && v.trim()) notes[i] = v.slice(0, 500);
+      clean[sid] = { reads, ratings, notes }; }
     importPending = clean;
     openSheet(`<h3>Restore this backup?</h3><p>It has ${plural(n, 'read issue')}${j.exported ? ' and was saved ' + esc(longDate(j.exported.slice(0, 10))) : ''}. It replaces what’s in the app now, on every device.</p>
       <button class="btn red" style="width:100%;margin-bottom:8px" data-act="doimport">Replace my progress</button><button class="opt" data-act="closesheet">Cancel</button>`);
@@ -696,7 +717,7 @@ async function readImport(file) {
 }
 function doImport() {
   if (!importPending || !guard()) return;
-  for (const c of chapters) { prog[c.id] = importPending[c.id] || { reads: {}, ratings: {} }; queue(c.id); }
+  for (const c of chapters) { prog[c.id] = importPending[c.id] || { reads: {}, ratings: {}, notes: {} }; queue(c.id); }
   importPending = null; render(); toast('Backup restored');
 }
 
@@ -737,7 +758,7 @@ async function startFirebase() {
   F.onSnapshot(F.collection(db, 'progress'), { includeMetadataChanges: true }, async snap => {
     synced = true;
     if (!snap.metadata.fromCache) { clearTimeout(timer); note = ''; lastServer = new Date(); }
-    for (const d of snap.docs) { const sid = +d.id.slice(1); if (dirty[sid] || writing[sid]) continue; const v = d.data() || {}; prog[sid] = { reads: { ...(v.reads || {}) }, ratings: { ...(v.ratings || {}) } }; }
+    for (const d of snap.docs) { const sid = +d.id.slice(1); if (dirty[sid] || writing[sid]) continue; const v = d.data() || {}; prog[sid] = { reads: { ...(v.reads || {}) }, ratings: { ...(v.ratings || {}) }, notes: { ...(v.notes || {}) } }; }
     if (!snap.metadata.fromCache) { serverEmpty = snap.empty; await maybeSeed(); }
     const cur = curChapter(); if (cat[cur.id] === undefined) loadCat(cur.id).then(() => render());
     if (!sheetOpen && document.activeElement?.id !== 'q') render();
@@ -780,6 +801,7 @@ if ('serviceWorker' in navigator) {
   try {
     const [c, m] = await Promise.all([fetch('data/chapters.json').then(r => r.json()), fetch('data/meta.json').then(r => r.json()).catch(() => null)]);
     chapters = c; meta = m || { characters: [], writers: [], events: [] };
+    fetch('data/recaps.json').then(r => r.ok ? r.json() : {}).then(j => { recaps = j || {}; render(); }).catch(() => { });
   } catch (e) { app.innerHTML = '<p class="status">Couldn’t load the chapter list. Check your connection.</p>'; return; }
   chapters.forEach(c => chById[c.id] = c);
   for (const e of meta.events) for (const sid in e.issues) for (const n of e.issues[sid]) { const k = sid + ':' + n; if (!evIdx[k]) evIdx[k] = e.name; }
