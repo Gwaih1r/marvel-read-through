@@ -2,7 +2,7 @@ import { firebaseConfig } from './config.js';
 import { ART } from './art.js';
 
 const FB = 'https://www.gstatic.com/firebasejs/10.12.2/';
-const APP_VERSION = '2.3.2';
+const APP_VERSION = '2.4.0';
 
 /* ================= helpers ================= */
 const $ = id => document.getElementById(id);
@@ -37,6 +37,7 @@ const chLabel = c => c.num ? 'Chapter ' + c.num + ': ' + c.name : c.name;
 const avg = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0;
 
 const I = {
+  book: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H11v16H5.5A1.5 1.5 0 0 1 4 18.5zM20 5.5A1.5 1.5 0 0 0 18.5 4H13v16h5.5a1.5 1.5 0 0 0 1.5-1.5z"/></svg>',
   home: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>',
   books: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="18" rx="1.5"/><rect x="14" y="3" width="7" height="18" rx="1.5"/><path d="M6.5 7v3M17.5 7v3"/></svg>',
   stats: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>',
@@ -234,8 +235,32 @@ function arcSheet(sid, ai) {
     ${left < a.iss.length ? `<button class="opt dan" data-act="arcunread" data-s="${sid}" data-a="${ai}">${I.undo}Mark whole arc unread</button>` : ''}
     ${v ? `<button class="opt" data-act="clearrate" data-s="${sid}" data-a="${ai}">${I.star}Clear rating</button>` : ''}
     <button class="opt" data-act="note" data-s="${sid}" data-a="${ai}">${I.pen}${P(sid).notes[ai] ? 'Edit your note' : 'Add a note to remember it by'}</button>
+    ${(() => { const sr = seriesRows(sid, ai).filter(r => r[4]); return sr.length ? `<div class="rlist"><span>Read in the Marvel Comics app</span>${sr.map(r => `<a class="opt" href="${esc(viewUrl(r))}" target="_blank" rel="noopener">${I.book}${esc(r[1])}</a>`).join('')}</div>` : ''; })()}
     <button class="opt" data-act="closesheet">Cancel</button>`);
 }
+
+
+/* ================= Marvel Comics app links ================= */
+const VIEWER = 'https://www.marvelcomicsapp.com/viewer/';
+const seriesMemo = {};
+function seriesOf(sid) { // issue number -> the guide's series line it sits under
+  if (seriesMemo[sid]) return seriesMemo[sid];
+  const m = {}; let cur = null;
+  for (const r of cat[sid] || []) { if (r[0] === 'a') cur = r; else if (r[0] === 'i') m[r[1]] = cur; }
+  return seriesMemo[sid] = m;
+}
+const viewUrl = row => row && row[4] ? VIEWER + row[4] : '';
+function readLink(sid, iss, fallback) { // series with the first unread issue, else the arc's first series
+  const rd = P(sid).reads, sm = seriesOf(sid);
+  const nx = iss.find(x => rd[x[1]] === undefined);
+  return viewUrl(nx && sm[nx[1]]) || viewUrl(fallback) || viewUrl(iss.length && sm[iss[0][1]]);
+}
+function seriesRows(sid, ai) { // every series line in an arc, in order
+  const out = [];
+  for (const g of groups(sid)) if (g.ai === ai && g.a) { out.push(g.a); for (const x of g.items) if (x[0] === 's') out.push(x[1]); }
+  return out;
+}
+const readBtn = (url, label = 'Read') => url ? `<a class="readbtn" href="${esc(url)}" target="_blank" rel="noopener">${I.book}${label}</a>` : '';
 
 /* ================= shared pieces ================= */
 function banner() {
@@ -280,7 +305,7 @@ function home() {
       ${list.length > 1 ? (list.length <= 24 ? `<div class="arcbar">${list.map(r => `<i class="${isRead(cur.id, r[1]) ? 'on' : ''}"></i>`).join('')}</div>`
         : `<div class="meter" style="margin:14px 0 4px;background:rgba(255,255,255,.28)"><i style="width:${rdc / list.length * 100}%;background:#fff"></i></div>`)
         + `<div class="arcmeta">Issue ${pos + 1} of ${list.length} in this arc</div>` : ''}
-      <div class="acts"><button class="btn prim" data-act="read" data-s="${cur.id}" data-n="${nx[1]}">${I.checkDark}Mark as read</button><button class="btn ghost" data-act="nav" data-h="ch-${cur.id}/${nx[1]}">Open</button></div>
+      <div class="acts"><button class="btn prim" data-act="read" data-s="${cur.id}" data-n="${nx[1]}">${I.checkDark}Mark as read</button>${(() => { const u = viewUrl(seriesOf(cur.id)[nx[1]]); return u ? `<a class="btn ghost" href="${esc(u)}" target="_blank" rel="noopener">${I.book}Read</a>` : ''; })()}<button class="btn ghost" data-act="nav" data-h="ch-${cur.id}/${nx[1]}">Open</button></div>
     </section>`;
   }
   // queue: next five unread after the hero issue, in guide order
@@ -349,7 +374,7 @@ function chapterView(sid, focus) {
       const A = arcs(sid).get(g.ai), v = rt[g.ai], rdn = iss.filter(x => rd[x[1]] !== undefined).length;
       const tags = [A.event ? `<span class="tag ev">${esc(A.event)}</span>` : '', ...writerNames(A.writers).slice(0, 2).map(w => `<span class="tag">${esc(w)}</span>`), A.char != null && charName(A.char) ? `<span class="tag">${esc(charName(A.char))}</span>` : ''].join('');
       hd = `<div class="ah"><div class="t${done ? ' done-t' : ''}">${esc(g.a[2] || g.a[1])}</div>
-        <button class="more" data-act="arcsheet" data-s="${sid}" data-a="${g.ai}" aria-label="Arc options">${I.dots}</button>
+        <div class="hbtns">${readBtn(readLink(sid, iss, g.a))}<button class="more" data-act="arcsheet" data-s="${sid}" data-a="${g.ai}" aria-label="Arc options">${I.dots}</button></div>
         <span class="s">${esc(g.a[2] ? g.a[1] : '')}${g.a[2] && g.a[3] ? ' · ' : ''}${esc(pubRange(g.a[3]))}</span>
         ${tags ? `<div class="tags">${tags}</div>` : ''}
         ${(() => { const rc = recaps[sid] && recaps[sid][g.ai], nt = P(sid).notes[g.ai]; if (!done && !nt) return ''; return (done ? (rc ? `<p class="recap"><span>Recap</span>${esc(rc)}</p>` : `<p class="recap pending"><span>Recap</span>Still being researched. It will show up here once it's verified.</p>`) : '') + (nt ? `<button class="mynote" data-act="note" data-s="${sid}" data-a="${g.ai}"><span>Your note</span>${esc(nt)}</button>` : ''); })()}

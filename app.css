@@ -146,7 +146,8 @@ svg.art.wide{opacity:.32}
 .ah .t{font:800 23px/1.05 "Barlow Condensed",sans-serif}
 .ah .done-t::after{content:"";display:inline-block;width:16px;height:16px;margin-left:7px;vertical-align:-1px;border-radius:50%;background:var(--green) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12l5 5L20 7'/%3E%3C/svg%3E") center/11px no-repeat}
 .ah .s{grid-column:1;color:var(--soft);font-size:13px;line-height:1.35}
-.ah .more{grid-row:1/3;grid-column:2;width:40px;height:40px;border-radius:10px;display:grid;place-items:center;color:var(--soft)}
+.ah .hbtns{grid-row:1/3;grid-column:2;display:flex;align-items:center;gap:4px}
+.ah .more{width:40px;height:40px;border-radius:10px;display:grid;place-items:center;color:var(--soft)}
 .ah .more svg{width:20px;height:20px}
 .tags{grid-column:1/3;display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}
 .tag{font-size:11.5px;font-weight:600;border-radius:20px;padding:3px 9px;background:var(--card2);color:var(--soft)}
@@ -373,3 +374,14 @@ svg.art.wide{opacity:.32}
 .nudge span{flex:1}
 .nudge b{color:var(--ink);font-weight:600}
 .nudge em{font-style:normal;color:var(--gold);font-weight:700}
+
+.readbtn{display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 12px;border-radius:999px;background:var(--card2);color:var(--ink);border:1px solid var(--line);font:700 13px/1 Inter,sans-serif;text-decoration:none;white-space:nowrap}
+.readbtn svg{width:16px;height:16px}
+.readbtn:active{background:var(--line)}
+.rlist{margin:6px 0 4px;padding-top:10px;border-top:1px solid var(--line)}
+.rlist>span{display:block;font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--soft);margin:0 0 4px}
+.rlist a.opt{text-decoration:none}
+.hero .acts{gap:8px}
+.hero .acts .btn{padding:0 14px}
+.hero .acts .btn.prim{flex:1 1 auto;min-width:0}
+.hero .acts .btn.ghost{flex:0 0 auto}
