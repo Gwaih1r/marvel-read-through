@@ -4,7 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Marvel Read-Through</title>
-<meta name="theme-color" content="#e0262f">
+<meta name="theme-color" content="#0b0b0e">
+<meta name="description" content="Modern-era Marvel reading tracker in Continuity Guide order">
+<meta name="color-scheme" content="dark light">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -14,12 +16,16 @@
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Inter:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,600;0,700;0,800;1,800&family=Inter:wght@400;500;600;700&display=swap">
 <link rel="stylesheet" href="app.css">
 </head>
 <body>
-<div class="wrap" id="app"><p class="status">Loading your read-through…</p></div>
+<div class="stickywrap" id="stickyHost"></div>
+<main class="view" id="app"><p class="status">Loading your read-through…</p></main>
+<nav class="nav" id="nav" aria-label="Main"></nav>
+<div id="sheetHost"></div>
 <div id="toastHost"></div>
+<script>try{var t=localStorage.getItem("theme")||"system";document.documentElement.dataset.theme=(t==="light"||(t==="system"&&matchMedia("(prefers-color-scheme: light)").matches))?"light":"dark"}catch(e){}</script>
 <script type="module" src="app.js"></script>
 </body>
 </html>

@@ -1,16 +1,23 @@
 {
+  "id": "./",
   "name": "Marvel Read-Through",
   "short_name": "Read-Through",
   "description": "Modern-era Marvel reading tracker in Continuity Guide order",
-  "start_url": "./",
+  "start_url": "./#home",
   "scope": "./",
   "display": "standalone",
-  "orientation": "any",
-  "background_color": "#0f0f12",
-  "theme_color": "#e0262f",
+  "orientation": "portrait-primary",
+  "background_color": "#0b0b0e",
+  "theme_color": "#0b0b0e",
+  "categories": ["books", "entertainment"],
   "icons": [
     {"src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png"},
     {"src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png"},
     {"src": "icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}
+  ],
+  "shortcuts": [
+    {"name": "Continue reading", "short_name": "Continue", "url": "./#continue", "icons": [{"src": "icons/icon-192.png", "sizes": "192x192"}]},
+    {"name": "Stats", "url": "./#stats", "icons": [{"src": "icons/icon-192.png", "sizes": "192x192"}]},
+    {"name": "Search", "url": "./#search", "icons": [{"src": "icons/icon-192.png", "sizes": "192x192"}]}
   ]
 }
