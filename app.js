@@ -2,7 +2,7 @@ import { firebaseConfig } from './config.js';
 import { ART } from './art.js';
 
 const FB = 'https://www.gstatic.com/firebasejs/10.12.2/';
-const APP_VERSION = '2.3.1';
+const APP_VERSION = '2.3.2';
 
 /* ================= helpers ================= */
 const $ = id => document.getElementById(id);
@@ -94,6 +94,7 @@ function groups(sid) {
     if (row[0] === 'a') {
       ai++; const nm = row[2]; if (nm && first[nm] === undefined) first[nm] = ai;
       if (g && g.a && nm && g.a[2] === nm) { g.items.push(['s', row]); continue; }
+      if (g && g.a && !nm && !row[3]) { g.items.push(['s', row]); continue; }
       g = { a: row, ai: nm ? first[nm] : ai, items: [], gi: out.length }; out.push(g);
     } else { if (!g) { g = { a: null, ai: -1, items: [], gi: out.length }; out.push(g); } g.items.push(row); }
   }

@@ -39,15 +39,20 @@ if '--flagged' in sys.argv:
 
 def arcs(sid):
     rows = json.load(open(os.path.join(ROOT, 'data', f'c{sid}.json')))
-    out, first, ai = {}, {}, -1
+    out, first, ai, last = {}, {}, -1, None
     for r in rows:
         if r[0] != 'a':
             continue
         ai += 1
+        # Untitled, undated headers belong to the guide entry above them.
+        if last is not None and not r[2] and not r[3]:
+            out[last]['series'].append(r[1])
+            continue
         name = r[2] or r[1]
         key = first.setdefault(name, ai) if r[2] else ai
         a = out.setdefault(key, {'name': name, 'series': [], 'dates': r[3]})
         a['series'].append(r[1])
+        last = key
     return out
 
 
