@@ -14,6 +14,13 @@ import json, os, sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 recaps = json.load(open(os.path.join(ROOT, 'data', 'recaps.json')))
+# Arcs a run tried and could not verify: {"<chapter_id>": {"<arc_key>": "reason"}}.
+# They are left out of the to-do list so later runs move forward. Pass --retry to include them.
+SKIP_PATH = os.path.join(ROOT, 'tools', 'recap_skipped.json')
+skipped = json.load(open(SKIP_PATH)) if os.path.exists(SKIP_PATH) else {}
+RETRY = '--retry' in sys.argv
+if RETRY:
+    sys.argv.remove('--retry')
 
 
 def arcs(sid):
@@ -33,9 +40,10 @@ def arcs(sid):
 ids = [int(x) for x in sys.argv[1:]] or list(range(100, 126))
 for sid in ids:
     have = recaps.get(str(sid), {})
-    todo = {k: v for k, v in arcs(sid).items() if str(k) not in have}
+    skip = {} if RETRY else skipped.get(str(sid), {})
+    todo = {k: v for k, v in arcs(sid).items() if str(k) not in have and str(k) not in skip}
     if len(sys.argv) == 1:
-        print(f'{sid}: {len(todo)} missing of {len(arcs(sid))}')
+        print(f'{sid}: {len(todo)} to do, {len(skip)} skipped, of {len(arcs(sid))}')
         continue
     print(f'== Chapter file c{sid}: {len(todo)} arcs need recaps')
     for k, v in todo.items():
