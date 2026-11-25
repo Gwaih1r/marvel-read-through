@@ -2,7 +2,7 @@ import { firebaseConfig } from './config.js';
 import { ART } from './art.js';
 
 const FB = 'https://www.gstatic.com/firebasejs/10.12.2/';
-const APP_VERSION = '2.2.0';
+const APP_VERSION = '2.2.1';
 
 /* ================= helpers ================= */
 const $ = id => document.getElementById(id);
@@ -343,7 +343,7 @@ function chapterView(sid, focus) {
         <button class="more" data-act="arcsheet" data-s="${sid}" data-a="${g.ai}" aria-label="Arc options">${I.dots}</button>
         <span class="s">${esc(g.a[2] ? g.a[1] : '')}${g.a[2] && g.a[3] ? ' · ' : ''}${esc(pubRange(g.a[3]))}</span>
         ${tags ? `<div class="tags">${tags}</div>` : ''}
-        ${(() => { const rc = recaps[sid] && recaps[sid][g.ai], nt = P(sid).notes[g.ai]; if (!done && !nt) return ''; return (done && rc ? `<p class="recap"><span>Recap</span>${esc(rc)}</p>` : '') + (nt ? `<button class="mynote" data-act="note" data-s="${sid}" data-a="${g.ai}"><span>Your note</span>${esc(nt)}</button>` : ''); })()}
+        ${(() => { const rc = recaps[sid] && recaps[sid][g.ai], nt = P(sid).notes[g.ai]; if (!done && !nt) return ''; return (done ? (rc ? `<p class="recap"><span>Recap</span>${esc(rc)}</p>` : `<p class="recap pending"><span>Recap</span>Still being researched. It will show up here once it's verified.</p>`) : '') + (nt ? `<button class="mynote" data-act="note" data-s="${sid}" data-a="${g.ai}"><span>Your note</span>${esc(nt)}</button>` : ''); })()}
         <div class="arow"><div class="stars" role="group" aria-label="Rate this arc">${[1, 2, 3, 4, 5].map(k => `<button aria-label="${k} star${k > 1 ? 's' : ''}" data-act="rate" data-s="${sid}" data-a="${g.ai}" data-k="${k}">${starSvg(v >= k ? 1 : v === k - .5 ? .5 : 0)}</button>`).join('')}</div>
         <button class="fold" data-act="fold" data-k="${key}" aria-expanded="${isOpen}">${isOpen ? 'Hide issues' : `${fmt(rdn)} / ${plural(iss.length, 'issue')}`}</button></div></div>`;
     }
