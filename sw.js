@@ -1,5 +1,5 @@
 // Bump VERSION whenever the app changes so installed copies pick up the update.
-const VERSION = 'mrt-v2.0.0';
+const VERSION = 'mrt-v2.0.1';
 const SHELL = ['./', 'index.html', 'app.js', 'app.css', 'config.js', 'manifest.json', 'data/chapters.json', 'data/meta.json',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/maskable-512.png'];
 const CHAPTERS = Array.from({ length: 26 }, (_, i) => 'data/c' + (100 + i) + '.json');
