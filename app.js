@@ -1,7 +1,7 @@
 import { firebaseConfig } from './config.js';
 
 const FB = 'https://www.gstatic.com/firebasejs/10.12.2/';
-const APP_VERSION = '2.0.2';
+const APP_VERSION = '2.0.3';
 
 /* ================= helpers ================= */
 const $ = id => document.getElementById(id);
