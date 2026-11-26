@@ -2,7 +2,7 @@ import { firebaseConfig } from './config.js';
 import { ART } from './art.js';
 
 const FB = 'https://www.gstatic.com/firebasejs/10.12.2/';
-const APP_VERSION = '2.6.5';
+const APP_VERSION = '2.6.6';
 
 /* ================= helpers ================= */
 const $ = id => document.getElementById(id);
