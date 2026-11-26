@@ -12,6 +12,8 @@ A reading tracker for the modern Marvel era, in [Continuity Guide](https://www.c
 - `firestore.rules`: database rules to paste into the Firebase console
 - `sw.js`, `manifest.json`, `icons/`: what makes it installable and work offline
 - `tools/build_data.py`: rebuilds the data files from a Google Sheets export
+- `tools/writers.json`: writer credits per issue with status and source notes, moved from the retired Sheet on Nov. 26, 2026
+- `tools/build_writers.py`: folds Verified credits into the chapter files and data/meta.json; todo lists issues missing a credit, review lists Needs review entries
 
 ## Progress data
 
