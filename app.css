@@ -449,3 +449,14 @@ img.art{position:absolute!important;inset:0;width:100%;height:100%;object-fit:co
 .cover:has(>img.art)::after{z-index:0;background:linear-gradient(180deg,rgba(0,0,0,.18) 0%,rgba(0,0,0,.08) 30%,rgba(0,0,0,.72) 100%)}
 .chead.cover:has(>img.art)::after,.hero.cover:has(>img.art)::after{background:linear-gradient(180deg,rgba(0,0,0,.45),rgba(0,0,0,.62) 45%,rgba(0,0,0,.82))}
 label.opt{cursor:pointer}
+/* v2.7: forecast, people, search filters */
+.fc{display:block;margin-top:4px;color:var(--soft);font-size:13px}
+.filters{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:10px 0 14px}
+.fsel{display:flex;flex-direction:column;gap:3px;background:var(--card);border-radius:12px;padding:7px 10px;font-size:12px;color:var(--soft);min-width:0}
+.fsel.on{outline:2px solid var(--ink)}
+.fsel select{appearance:none;-webkit-appearance:none;background:none;border:0;color:var(--ink);font:inherit;font-size:15px;font-weight:600;padding:0;width:100%;text-overflow:ellipsis}
+.filters .chip{align-self:center;justify-self:start}
+.pp{display:flex;justify-content:space-between;align-items:center;gap:12px;width:100%;text-align:left;padding:10px 0;border-top:1px solid var(--line,rgba(127,127,127,.18))}
+.pp:first-of-type{border-top:0}
+.pn{min-width:0}.pn b{display:block;font-weight:600}.pn small,.pr small{display:block;color:var(--soft);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pr{text-align:right;flex:none}.pr b{font-size:17px}

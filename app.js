@@ -2,7 +2,7 @@ import { firebaseConfig } from './config.js';
 import { ART } from './art.js';
 
 const FB = 'https://www.gstatic.com/firebasejs/10.12.2/';
-const APP_VERSION = '2.6.8';
+const APP_VERSION = '2.7.0';
 
 /* ================= helpers ================= */
 const $ = id => document.getElementById(id);
@@ -64,6 +64,7 @@ const starSvg = fill => `<svg viewBox="0 0 24 24"><defs><clipPath id="h"><rect w
 let recaps = {}, chapters = [], meta = null, cat = {}, prog = {}, loaded = false, synced = false, note = '';
 let mode = 'preview', user = null, canWrite = false, fb = null, lastServer = null;
 const dirty = {}, writing = {}, timers = {}, open = {};
+let sf = { w: '', c: '', e: '', r: '', s: '' };
 let lastUndo = null, popKey = '', filter = 'all', statTab = 'overview', q = '', authErr = '', importPending = null, swWaiting = null;
 const chById = {}, evIdx = {};
 
@@ -472,24 +473,99 @@ function buildSearch() {
     if (!cat[c.id]) continue;
     for (const g of groups(c.id)) for (const r of g.iss) {
       const arc = g.a ? (g.a[2] || '') : '';
-      searchIdx.push({ sid: c.id, r, arc, hay: (r[2] + ' ' + arc + ' ' + charName(r[5]) + ' ' + writerNames(r[6]).join(' ')).toLowerCase() });
+      searchIdx.push({ sid: c.id, r, arc, ai: g.ai, ev: evIdx[c.id + ':' + r[1]] || '', hay: (r[2] + ' ' + arc + ' ' + charName(r[5]) + ' ' + writerNames(r[6]).join(' ')).toLowerCase() });
     }
   }
 }
+function filterBar() {
+  if (!allLoaded) return '';
+  if (!searchIdx) buildSearch();
+  const cw = {}, cc = {}; for (const x of searchIdx) { (x.r[6] || []).forEach(w => cw[w] = (cw[w] || 0) + 1); if (x.r[5] !== '' && x.r[5] != null) cc[x.r[5]] = (cc[x.r[5]] || 0) + 1; }
+  const opts = (o, nm) => Object.keys(o).map(k => [k, nm(+k)]).filter(x => x[1]).sort((a, b) => a[1].localeCompare(b[1]));
+  const sel = (key, label, list) => `<label class="fsel${sf[key] ? ' on' : ''}"><span>${label}</span><select data-filt="${key}"><option value="">Any</option>${list.map(([v, l]) => `<option value="${esc(v)}"${sf[key] === String(v) ? ' selected' : ''}>${esc(l)}</option>`).join('')}</select></label>`;
+  const any = Object.values(sf).some(Boolean);
+  return `<div class="filters">${sel('w', 'Writer', opts(cw, k => meta.writers[k]))}${sel('c', 'Character', opts(cc, k => charName(k)))}${sel('e', 'Event', meta.events.map(e => [e.name, e.name]))}
+    ${sel('r', 'Your rating', [['5', '5 stars'], ['4', '4 stars and up'], ['3', '3 stars and up'], ['low', '2.5 stars or less'], ['none', 'Not rated']])}${sel('s', 'Status', [['read', 'Read'], ['unread', 'Unread']])}
+    ${any ? '<button class="chip" data-act="fclear">Clear filters</button>' : ''}</div>`;
+}
 function searchView() {
-  return `<div class="search"><label>${I.search}<input id="q" type="search" placeholder="Series, arc, character or writer" value="${esc(q)}" autocomplete="off" enterkeyhint="search" aria-label="Search every issue"></label></div><div id="results">${results()}</div>`;
+  return `<div class="search"><label>${I.search}<input id="q" type="search" placeholder="Series, arc, character or writer" value="${esc(q)}" autocomplete="off" enterkeyhint="search" aria-label="Search every issue"></label></div><div id="fbar">${filterBar()}</div><div id="results">${results()}</div>`;
+}
+function passFilters(x) {
+  if (sf.w && !(x.r[6] || []).map(String).includes(sf.w)) return false;
+  if (sf.c && String(x.r[5]) !== sf.c) return false;
+  if (sf.e && x.ev !== sf.e) return false;
+  if (sf.s) { const on = isRead(x.sid, x.r[1]); if ((sf.s === 'read') !== on) return false; }
+  if (sf.r) { const v = x.ai >= 0 ? P(x.sid).ratings[x.ai] : 0;
+    if (sf.r === 'none' ? v : sf.r === 'low' ? !(v && v <= 2.5) : !(v >= +sf.r)) return false; }
+  return true;
 }
 function results() {
   if (!allLoaded) return '<p class="hint">Loading every chapter so you can search the whole guide…</p>';
   if (!searchIdx) buildSearch();
-  const terms = q.toLowerCase().trim().split(/\s+/).filter(Boolean);
-  if (!terms.length) return `<p class="hint">Search all ${fmt(searchIdx.length)} issues. Try “Schism,” “Ultimates” or “Bendis.”</p>`;
-  const hits = searchIdx.filter(x => terms.every(t => x.hay.includes(t)));
+  const terms = q.toLowerCase().trim().split(/\s+/).filter(Boolean), anyF = Object.values(sf).some(Boolean);
+  if (!terms.length && !anyF) return `<p class="hint">Search all ${fmt(searchIdx.length)} issues, or use the filters. Try “Schism,” “Ultimates” or “Bendis.”</p>`;
+  const hits = searchIdx.filter(x => terms.every(t => x.hay.includes(t)) && passFilters(x));
   if (!hits.length) return '<p class="hint">No issues match that search.</p>';
   return `<p class="hint" style="margin:4px 0 10px;text-align:left">${plural(hits.length, 'match', 'matches')}${hits.length > 100 ? '. Showing the first 100' : ''}</p><div class="res">${hits.slice(0, 100).map(x => {
     const c = chById[x.sid], on = isRead(x.sid, x.r[1]);
     return `<button class="ri${on ? ' on' : ''}" data-act="nav" data-h="ch-${x.sid}/${x.r[1]}"><span class="chk${on ? ' on' : ''}">${I.check}</span><span><b>${esc(x.r[2])}</b><small>${c.num ? 'Ch. ' + c.num : 'Prologue'}${x.arc ? ' · ' + esc(x.arc) : ''}${on ? ' · Read ' + esc(short(P(x.sid).reads[x.r[1]])) : ''}</small></span></button>`;
   }).join('')}</div>`;
+}
+
+
+/* ================= forecast ================= */
+// Recent pace: issues per day over the last 30 days, counted from your first reading day if that's sooner.
+function recentPace(m) {
+  const days = Object.keys(m).sort(); if (!days.length) return { pace: 0, span: 0 };
+  const span = Math.min(30, Math.round((parse(today()) - parse(days[0])) / 864e5) + 1);
+  let n = 0; for (let i = 0; i < span; i++) n += m[iso(addDays(new Date(), -i))] || 0;
+  return { pace: span ? n / span : 0, span };
+}
+function chapterForecast(m) { // projected finish date for every unfinished chapter, in guide order
+  const { pace } = recentPace(m); if (!(pace > 0)) return [];
+  let left = 0; const out = [];
+  for (const c of chapters) { const l = c.total - readCount(c.id); if (l <= 0) continue; left += l; out.push({ c, left: l, date: iso(addDays(new Date(), Math.ceil(left / pace))) }); }
+  return out;
+}
+const shortDate = d => { const x = parse(d); return APM[x.getMonth()] + ' ' + x.getDate() + (x.getFullYear() !== new Date().getFullYear() ? ', ' + x.getFullYear() : ''); };
+
+
+/* ================= people: writers and characters ================= */
+let peopleSort = 'read';
+function peopleStats() {
+  const W = {}, C = {};
+  const bump = (o, k, f) => { const x = o[k] || (o[k] = { k, read: 0, total: 0, rates: [], best: null }); f(x); };
+  for (const c of chapters) {
+    const rd = P(c.id).reads, rt = P(c.id).ratings;
+    for (const a of arcs(c.id).values()) {
+      const v = rt[a.ai], wsA = new Set(), csA = new Set();
+      for (const r of a.iss) {
+        const on = rd[r[1]] !== undefined;
+        (r[6] || []).forEach(w => { wsA.add(w); bump(W, w, x => { x.total++; if (on) x.read++; }); });
+        if (r[5] !== '' && r[5] != null) { csA.add(r[5]); bump(C, r[5], x => { x.total++; if (on) x.read++; }); }
+      }
+      if (v) { const arc = { ...a, v, ch: c };
+        wsA.forEach(w => bump(W, w, x => { x.rates.push(v); if (!x.best || v > x.best.v) x.best = arc; }));
+        csA.forEach(k => bump(C, k, x => { x.rates.push(v); if (!x.best || v > x.best.v) x.best = arc; })); }
+    }
+  }
+  const fin = (o, nm) => Object.values(o).map(x => ({ ...x, name: nm(+x.k), avg: avg(x.rates) })).filter(x => x.name);
+  return { W: fin(W, k => meta.writers[k]), C: fin(C, k => charName(k)) };
+}
+function peopleList(list, kind) {
+  const srt = peopleSort === 'rating' ? [...list].filter(x => x.rates.length >= 2).sort((a, b) => b.avg - a.avg || b.rates.length - a.rates.length)
+    : [...list].filter(x => x.read).sort((a, b) => b.read - a.read || b.total - a.total);
+  if (!srt.length) return `<p class="k">${peopleSort === 'rating' ? 'Rate at least two arcs with someone to see them here.' : 'Nothing read yet.'}</p>`;
+  return srt.slice(0, 15).map(x => `<button class="pp" data-act="pfilter" data-kind="${kind}" data-k="${x.k}">
+    <span class="pn"><b>${esc(x.name)}</b><small>${fmt(x.read)} of ${fmt(x.total)} read${x.best ? ' · Best: ' + esc(x.best.name) : ''}</small></span>
+    <span class="pr">${x.rates.length ? `<b>${x.avg.toFixed(2)}</b><small>${plural(x.rates.length, 'arc')}</small>` : '<small>No ratings</small>'}</span></button>`).join('');
+}
+function peopleView() {
+  const { W, C } = peopleStats();
+  return `<div class="seg" role="radiogroup" aria-label="Sort" style="grid-template-columns:repeat(2,minmax(0,1fr));margin-bottom:12px">${[['read', 'Most read'], ['rating', 'Highest rated']].map(([k, l]) => `<button role="radio" aria-checked="${peopleSort === k}" class="${peopleSort === k ? 'on' : ''}" data-act="psort" data-v="${k}">${l}</button>`).join('')}</div>
+    <section class="panel"><h3>Writers</h3><p class="k">Writer credits cover the chapters checked so far. Tap anyone to see their issues.</p>${peopleList(W, 'w')}</section>
+    <section class="panel"><h3>Characters</h3><p class="k">Each issue counts once, for its lead character.</p>${peopleList(C, 'c')}</section>`;
 }
 
 /* ================= STATS ================= */
@@ -603,9 +679,9 @@ function arcLine(a) { return `<button class="kv" style="width:100%;text-align:le
 
 function statsView() {
   const S = computeStats();
-  const tabs = [['overview', 'Overview'], ['wrapped', 'Wrapped'], ['pace', 'Pace'], ['ratings', 'Ratings'], ['universe', 'Universe'], ['milestones', 'Milestones']];
+  const tabs = [['overview', 'Overview'], ['wrapped', 'Wrapped'], ['pace', 'Pace'], ['ratings', 'Ratings'], ['people', 'People'], ['universe', 'Universe'], ['milestones', 'Milestones']];
   let body = '';
-  const needAll = ['ratings', 'universe', 'wrapped'].includes(statTab) && !allLoaded;
+  const needAll = ['ratings', 'people', 'universe', 'wrapped'].includes(statTab) && !allLoaded;
   if (needAll) body = '<p class="status">Crunching every chapter…</p>';
   else if (statTab === 'wrapped') body = wrappedView();
   else if (statTab === 'overview') {
@@ -639,6 +715,11 @@ function statsView() {
       ${kv(`Finish ${esc(chLabel(S.cur))}`, S.chFinish ? esc(longDate(S.chFinish)) : '—')}
       ${kv('Finish the whole guide', S.guideFinish ? esc(longDate(S.guideFinish)) : '—')}
       ${kv('Issues left in the guide', fmt(S.guide - S.tot))}</section>
+    ${(() => { const f = chapterForecast(S.m); if (!f.length) return ''; const left = S.guide - S.tot;
+      const need = d => Math.ceil(left / Math.max(1, Math.round((parse(d) - parse(today())) / 864e5)));
+      const y = new Date().getFullYear(), tg = [[`${y + 1}-06-30`, 'By June 30, ' + (y + 1)], [`${y + 1}-12-31`, 'By the end of ' + (y + 1)], [`${y + 2}-12-31`, 'By the end of ' + (y + 2)]].filter(([d]) => d > today());
+      return `<section class="panel"><h3>Chapter by chapter</h3><p class="k">When you'd finish each chapter if you keep reading ${S.pace.toFixed(1)} a day.</p>${f.map(x => kv(esc((x.c.num ? x.c.num + '. ' : '') + x.c.name), `${esc(shortDate(x.date))} <small>· ${fmt(x.left)} left</small>`)).join('')}</section>
+      <section class="panel"><h3>To finish the guide</h3><p class="k">Issues a day you'd need from today.</p>${tg.map(([d, l]) => kv(l, `${fmt(need(d))} a day`)).join('')}</section>`; })()}
     <section class="panel"><h3>By weekday</h3><div class="rows">${S.dow.map((v, i) => hbar(DOW[i], v, dmax)).join('')}</div></section>`;
   } else if (statTab === 'ratings') {
     const smax = Math.max(1, ...S.spread.map(x => x[1]));
@@ -654,6 +735,8 @@ function statsView() {
     ${S.byChar.length ? `<section class="panel"><h3>By character</h3><p class="k">Characters with at least two rated arcs.</p>${S.byChar.map(([k, a, n]) => kv(esc(k), `<span style="color:var(--gold)">${a.toFixed(2)}</span> · ${n}`)).join('')}</section>` : ''}
     ${S.byWriter.length ? `<section class="panel"><h3>By writer</h3>${S.byWriter.map(([k, a, n]) => kv(esc(k), `<span style="color:var(--gold)">${a.toFixed(2)}</span> · ${n}`)).join('')}</section>` : ''}
     <section class="panel"><h3>Long arcs vs. short arcs</h3>${kv('Six issues or more', S.longShort[0][1] ? `${S.longShort[0][0].toFixed(2)} · ${plural(S.longShort[0][1], 'arc')}` : '—')}${kv('Five issues or fewer', S.longShort[1][1] ? `${S.longShort[1][0].toFixed(2)} · ${plural(S.longShort[1][1], 'arc')}` : '—')}</section>`;
+  } else if (statTab === 'people') {
+    body = peopleView();
   } else if (statTab === 'universe') {
     const cmax = S.chars[0] ? S.chars[0][1] : 1, wmax = S.writers[0] ? S.writers[0][1] : 1;
     const evs = S.events.filter(e => e.read > 0).sort((a, b) => b.read / b.total - a.read / a.total), evDone = S.events.filter(e => e.read >= e.total).length;
@@ -803,7 +886,7 @@ function goalCard(m) {
     <button class="ring" data-act="goalset" aria-label="Today ${t} of ${goal} issues. Change goal"><svg viewBox="0 0 84 84"><circle cx="42" cy="42" r="${R}" class="rb"/><circle cx="42" cy="42" r="${R}" class="rf" style="stroke-dasharray:${C};stroke-dashoffset:${C * (1 - pct)}"/></svg><span><b>${t}</b><small>of ${goal}</small></span></button>
     <div class="gt"><b>${goal && t >= goal ? 'Goal hit' : goal ? fmt(Math.max(0, goal - t)) + ' to go today' : 'No daily goal set'}</b>
       <span class="fl">${I.flame}<b>${s}</b> day streak</span>
-      <span>Goal met ${hit} of the last 7 days</span></div>
+      <span>Goal met ${hit} of the last 7 days</span>${(() => { const f = chapterForecast(m)[0]; return f ? `<span class="fc">At your pace, ${esc(chLabel(f.c))} wraps up around ${esc(shortDate(f.date))}</span>` : ''; })()}</div>
   </section>`;
 }
 function goalSheet() {
@@ -925,7 +1008,7 @@ function route() {
   if (mm) { view = +mm[1]; focus = flashN = mm[2] ? +mm[2] : null; }
   else view = ['home', 'chapters', 'stats', 'search', 'settings'].includes(h) ? h : 'home';
   if (typeof view === 'number') { if (!cat[view]) loadCat(view).then(() => render(true)); }
-  if (view === 'stats' || view === 'search') loadAll().then(() => { if (view === 'stats' || view === 'search') { if (view === 'search') { const r = $('results'); if (r) r.innerHTML = results(); } else render(); } });
+  if (view === 'stats' || view === 'search') loadAll().then(() => { if (view === 'stats' || view === 'search') { if (view === 'search') { const f = $('fbar'), r = $('results'); if (f) f.innerHTML = filterBar(); if (r) r.innerHTML = results(); } else render(); } });
   if (sheetOpen) { sheetOpen = false; sheetHost.innerHTML = ''; }
   render(true);
 }
@@ -993,6 +1076,9 @@ document.addEventListener('click', e => {
     case 'filter': filter = b.dataset.f; render(); break;
     case 'jump': { const el = app.querySelector('.is.nx'); if (el) el.scrollIntoView({ block: 'center', behavior: 'smooth' }); break; }
     case 'stattab': statTab = b.dataset.t; render(); window.scrollTo(0, 0); break;
+    case 'psort': peopleSort = b.dataset.v; render(); break;
+    case 'pfilter': sf = { w: '', c: '', e: '', r: '', s: '' }; sf[b.dataset.kind] = b.dataset.k; q = ''; navTo('search'); break;
+    case 'fclear': sf = { w: '', c: '', e: '', r: '', s: '' }; { const f = $('fbar'), r = $('results'); if (f) f.innerHTML = filterBar(); if (r) r.innerHTML = results(); } break;
     case 'arcsheet': arcSheet(s, +b.dataset.a); break;
     case 'day': daySheet(b.dataset.d); break;
     case 'coversheet': coverSheet(s); break;
@@ -1032,7 +1118,7 @@ let qt;
 document.addEventListener('input', e => {
   if (e.target.id === 'q') { q = e.target.value; clearTimeout(qt); qt = setTimeout(() => { const r = $('results'); if (r) r.innerHTML = results(); }, 120); }
 });
-document.addEventListener('change', e => { if (e.target.id === 'imp' && e.target.files[0]) readImport(e.target.files[0]); if (e.target.dataset && e.target.dataset.cover && e.target.files[0]) pickCover(+e.target.dataset.cover, e.target.files[0]); });
+document.addEventListener('change', e => { if (e.target.dataset && e.target.dataset.filt !== undefined) { sf[e.target.dataset.filt] = e.target.value; const f = $('fbar'), r = $('results'); if (f) f.innerHTML = filterBar(); if (r) r.innerHTML = results(); return; } if (e.target.id === 'imp' && e.target.files[0]) readImport(e.target.files[0]); if (e.target.dataset && e.target.dataset.cover && e.target.files[0]) pickCover(+e.target.dataset.cover, e.target.files[0]); });
 window.addEventListener('hashchange', route);
 window.addEventListener('online', () => render());
 window.addEventListener('offline', () => render());
