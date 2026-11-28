@@ -2,7 +2,7 @@ import { firebaseConfig } from './config.js';
 import { ART } from './art.js';
 
 const FB = 'https://www.gstatic.com/firebasejs/10.12.2/';
-const APP_VERSION = '2.8.0';
+const APP_VERSION = '2.8.1';
 
 /* ================= helpers ================= */
 const $ = id => document.getElementById(id);
@@ -38,7 +38,7 @@ const chLabel = c => isPre(c) ? 'Pre-Modern ' + c.num + ': ' + c.name : c.num ? 
 const chNo = c => isPre(c) ? 'Pre-Modern Chapter ' + c.num : c.num ? 'Chapter ' + c.num : 'Prologue';
 const chAbbr = c => isPre(c) ? 'Pre-Modern ' + c.num : c.num ? 'Ch. ' + c.num : 'Prologue';
 const chList = c => (isPre(c) ? 'PM' + c.num + '. ' : c.num ? c.num + '. ' : '') + c.name;
-const ERAS = [['modern', 'Modern'], ['pre', 'Pre-Modern']];
+const ERAS = [['pre', 'Pre-Modern'], ['modern', 'Modern']];
 let era = (() => { try { return localStorage.getItem('rt-era') === 'pre' ? 'pre' : 'modern'; } catch (e) { return 'modern'; } })();
 const eraOf = c => isPre(c) ? 'pre' : 'modern';
 const eraCh = (e = era) => chapters.filter(c => eraOf(c) === e);
