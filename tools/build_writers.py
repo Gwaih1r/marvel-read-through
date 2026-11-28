@@ -1,14 +1,15 @@
 """Writer credits. tools/writers.json is the ledger:
 {"<exact issue title>": {"writers": "A; B", "status": "Verified" | "Needs review", "note": "..."}}
-  python3 tools/build_writers.py          fold Verified credits into data/c1xx.json and data/meta.json
-  python3 tools/build_writers.py todo     list issues with no ledger entry, in reading order
+  python3 tools/build_writers.py          fold Verified credits into every chapter file (data/c1xx.json Modern, data/c2xx.json Pre-Modern) and data/meta.json
+  python3 tools/build_writers.py todo     list issues with no ledger entry, Pre-Modern first, then Modern, each in reading order
   python3 tools/build_writers.py review   list Needs review entries
 Writer ids in meta.json only grow (new names are appended) so existing rows keep their ids."""
 import json, glob, sys, os
 os.chdir(os.path.dirname(os.path.abspath(__file__)) + '/..')
 L = json.load(open('tools/writers.json'))
 low = {k.lower(): v for k, v in L.items()}
-files = sorted(glob.glob('data/c1*.json'))
+# Kyle is reading the Pre-Modern era first (Nov. 28, 2026), so its files come first.
+files = sorted(glob.glob('data/c2[0-9][0-9].json')) + sorted(glob.glob('data/c1[0-9][0-9].json'))
 mode = sys.argv[1] if len(sys.argv) > 1 else ''
 if mode == 'todo':
     seen = set()

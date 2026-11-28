@@ -2,8 +2,10 @@
 
 Usage: python3 tools/recap_todo.py [chapter_id ...]
        python3 tools/recap_todo.py --flagged
-  chapter_id is 100 (Prologue) through 125 (Chapter 25). With no ids, prints a
-  per-chapter count of arcs still to do and arcs flagged for deeper research.
+  chapter_id is 201-215 (Pre-Modern Chapters 1-15, as many as exist) or 100 (Prologue)
+  through 125 (Chapter 25). With no ids, prints a per-chapter count of arcs still to do
+  and arcs flagged, in priority order: Pre-Modern first (Kyle is reading it first as of
+  Nov. 28, 2026), then Modern.
   --flagged lists every flagged arc, oldest and least-tried first.
 
 Recaps live in data/recaps.json as {"<chapter_id>": {"<arc_key>": "One sentence."}}.
@@ -56,13 +58,15 @@ def arcs(sid):
     return out
 
 
-ids = [int(x) for x in sys.argv[1:]] or list(range(100, 126))
+CH = json.load(open(os.path.join(ROOT, 'data', 'chapters.json')))
+NAME = {c['id']: ('Pre-Modern Chapter %d: %s' % (c['num'], c['name'])) if c.get('era') == 'pre' else ('Chapter %d: %s' % (c['num'], c['name']) if c['num'] else c['name']) for c in CH}
+ids = [int(x) for x in sys.argv[1:]] or [c['id'] for c in CH if c.get('era') == 'pre'] + [c['id'] for c in CH if c.get('era') != 'pre']
 for sid in ids:
     have = recaps.get(str(sid), {})
     skip = {} if RETRY else skipped.get(str(sid), {})
     todo = {k: v for k, v in arcs(sid).items() if str(k) not in have and str(k) not in skip}
     if len(sys.argv) == 1:
-        print(f'{sid}: {len(todo)} to do, {len(skip)} flagged, of {len(arcs(sid))}')
+        print(f'{sid} ({NAME.get(sid, sid)}): {len(todo)} to do, {len(skip)} flagged, of {len(arcs(sid))}')
         continue
     print(f'== Chapter file c{sid}: {len(todo)} arcs need recaps')
     for k, v in todo.items():
