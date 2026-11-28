@@ -1,1 +1,26 @@
-{}
+{
+ "104": {
+  "111": {
+   "name": "Enemy of the Stars",
+   "reason": "Setup confirmed (Madame Hydra, this world's Sue Storm, brainwashes Exiles and hunts Reed Richards on a dying Earth) but no summary of the ending in Exiles #93-94 found; only the #94 solicitation.",
+   "tried": [
+    "spiderfan.org Exiles #92 review",
+    "uncannyxmen.net/node/11200",
+    "marvel.com Exiles (2001) #94 solicitation",
+    "margins.app search"
+   ],
+   "attempts": 1,
+   "last": "2026-11-28"
+  },
+  "114": {
+   "name": "Born Better",
+   "reason": "Time-jumping setup confirmed (1503 Heller, 1700s lovers, post-WWI Germany, Wendell Volker trying to retrieve Zemo) but no summary of #4; unknown whether Zemo returns or what Volker wants.",
+   "tried": [
+    "comicvine Zemo: Born Better #1 issue page",
+    "marvel.com solicitations for #2-4"
+   ],
+   "attempts": 1,
+   "last": "2026-11-28"
+  }
+ }
+}
