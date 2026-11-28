@@ -2,7 +2,7 @@ import { firebaseConfig } from './config.js';
 import { ART } from './art.js';
 
 const FB = 'https://www.gstatic.com/firebasejs/10.12.2/';
-const APP_VERSION = '2.8.1';
+const APP_VERSION = '2.8.2';
 
 /* ================= helpers ================= */
 const $ = id => document.getElementById(id);
@@ -42,6 +42,13 @@ const ERAS = [['pre', 'Pre-Modern'], ['modern', 'Modern']];
 let era = (() => { try { return localStorage.getItem('rt-era') === 'pre' ? 'pre' : 'modern'; } catch (e) { return 'modern'; } })();
 const eraOf = c => isPre(c) ? 'pre' : 'modern';
 const eraCh = (e = era) => chapters.filter(c => eraOf(c) === e);
+// Whole-guide reading plan for Stats: Pre-Modern first, then Modern (Kyle's plan as of Nov. 28, 2026).
+const planOrder = () => [...eraCh('pre'), ...eraCh('modern')];
+function planCur() { // the unfinished chapter you read from most recently, else the first unfinished one in plan order
+  let best = null, bd = '';
+  for (const c of chapters) { if (readCount(c.id) >= c.total) continue; for (const d of Object.values(P(c.id).reads)) if (d && d > bd) { bd = d; best = c; } }
+  const L = planOrder(); return best || L.find(c => readCount(c.id) < c.total) || L[L.length - 1];
+}
 const eraSwitch = () => eraCh('pre').length ? `<div class="seg erasw" role="radiogroup" aria-label="Era">${ERAS.map(([k, l]) => `<button role="radio" aria-checked="${era === k}" class="${era === k ? 'on' : ''}" data-act="era" data-v="${k}">${l}</button>`).join('')}</div>` : '';
 const avg = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0;
 
@@ -532,10 +539,10 @@ function recentPace(m) {
   let n = 0; for (let i = 0; i < span; i++) n += m[iso(addDays(new Date(), -i))] || 0;
   return { pace: span ? n / span : 0, span };
 }
-function chapterForecast(m) { // projected finish date for every unfinished chapter, in guide order
+function chapterForecast(m, list = eraCh()) { // projected finish date for every unfinished chapter, in order
   const { pace } = recentPace(m); if (!(pace > 0)) return [];
   let left = 0; const out = [];
-  for (const c of eraCh()) { const l = c.total - readCount(c.id); if (l <= 0) continue; left += l; out.push({ c, left: l, date: iso(addDays(new Date(), Math.ceil(left / pace))) }); }
+  for (const c of list) { const l = c.total - readCount(c.id); if (l <= 0) continue; left += l; out.push({ c, left: l, date: iso(addDays(new Date(), Math.ceil(left / pace))) }); }
   return out;
 }
 const shortDate = d => { const x = parse(d); return APM[x.getMonth()] + ' ' + x.getDate() + (x.getFullYear() !== new Date().getFullYear() ? ', ' + x.getFullYear() : ''); };
@@ -580,8 +587,9 @@ function peopleView() {
 
 /* ================= STATS ================= */
 function computeStats() {
-  const m = allDays(), days = Object.keys(m).sort(), t = today(), tot = totalRead(), guide = guideTotal();
-  const S = { m, days, tot, guide, etot: eraRead(), today: m[t] || 0 };
+  const m = allDays(), days = Object.keys(m).sort(), t = today(), tot = totalRead(), guide = chapters.reduce((a, c) => a + c.total, 0);
+  const S = { m, days, tot, guide, etot: tot, today: m[t] || 0 };
+  S.eras = ERAS.map(([k, l]) => { const L = eraCh(k); return [l, L.reduce((a, c) => a + readCount(c.id), 0), L.reduce((a, c) => a + c.total, 0), L.filter(c => readCount(c.id) >= c.total).length, L.length]; }).filter(x => x[4]);
   S.streak = streakFrom(m);
   let best = 0, run = 0, prev = null;
   for (const d of days) { run = prev && iso(addDays(parse(prev), 1)) === d ? run + 1 : 1; best = Math.max(best, run); prev = d; }
@@ -602,8 +610,9 @@ function computeStats() {
   const span = days.length ? Math.min(30, Math.round((parse(t) - parse(days[0])) / 864e5) + 1) : 0;
   let lspan = 0; for (let i = 0; i < span; i++) lspan += m[iso(addDays(new Date(), -i))] || 0;
   S.spanDays = span; const pace = span ? lspan / span : 0;
-  const cur = curChapter(), left = cur.total - readCount(cur.id);
-  S.cur = cur; S.pace = pace;
+  const cur = planCur(), left = cur.total - readCount(cur.id);
+  S.cur = cur;
+  { const fc = chapterForecast(m, planOrder()); S.eraFinish = ERAS.filter(([k]) => eraCh(k).some(c => readCount(c.id) < c.total)).map(([k, l]) => [l, (fc.filter(x => eraOf(x.c) === k).pop() || {}).date || null]); } S.pace = pace;
   S.chFinish = pace > 0 && left > 0 ? iso(addDays(new Date(), Math.ceil(left / pace))) : null;
   S.guideFinish = pace > 0 && guide > S.etot ? iso(addDays(new Date(), Math.ceil((guide - S.etot) / pace))) : null;
   S.dow = [0, 0, 0, 0, 0, 0, 0]; for (const [d, v] of Object.entries(m)) S.dow[(parse(d).getDay() + 6) % 7] += v;
@@ -697,7 +706,7 @@ function statsView() {
   else if (statTab === 'overview') {
     const diff = S.thisWeek - S.lastWeekSoFar;
     body = `<div class="figs" style="margin-bottom:10px">
-      <div class="fig wide"><b>${fmt(S.tot)}</b><span>issues read · ${(S.etot / S.guide * 100).toFixed(1)}% of the ${era === 'pre' ? 'Pre-Modern' : 'Modern'} era</span></div>
+      <div class="fig wide"><b>${fmt(S.tot)}</b><span>issues read · ${(S.tot / S.guide * 100).toFixed(1)}% of the whole guide</span></div>
       <div class="fig"><b>${S.today}</b><span>today</span></div>
       <div class="fig"><b>${S.thisWeek}</b><span>this week</span><em class="${diff >= 0 ? '' : 'dn'}">${diff >= 0 ? '+' : ''}${diff} vs. last</em></div>
       <div class="fig"><b>${S.streak}</b><span>day streak</span></div>
@@ -706,7 +715,8 @@ function statsView() {
       <div class="fig"><b>${S.perDay.toFixed(1)}</b><span>per reading day</span></div>
     </div>
     <section class="panel"><h3>Reading calendar</h3><p class="k">Each square is one day. Columns run Monday to Sunday.</p>${heatmap(S.m)}</section>
-    <section class="panel"><h3>Chapters</h3><div class="rows">${chapters.filter(c => readCount(c.id) > 0 || c === S.cur).map(c => hbar(esc(chList(c)), readCount(c.id), c.total, fmt(readCount(c.id)) + ' / ' + fmt(c.total))).join('')}</div></section>`;
+    ${S.eras.length > 1 ? `<section class="panel"><h3>By era</h3><div class="rows">${S.eras.map(([l, r, t, d, n]) => hbar(esc(l) + ` <small style="color:var(--dim)">· ${d} of ${n} chapters done</small>`, r, t, fmt(r) + ' / ' + fmt(t))).join('')}</div></section>` : ''}
+    <section class="panel"><h3>Chapters</h3><div class="rows">${planOrder().filter(c => readCount(c.id) > 0 || c === S.cur).map(c => hbar(esc(chList(c)), readCount(c.id), c.total, fmt(readCount(c.id)) + ' / ' + fmt(c.total))).join('')}</div></section>`;
   } else if (statTab === 'pace') {
     const dmax = Math.max(1, ...S.dow);
     body = `<section class="panel"><h3>Personal bests</h3>
@@ -723,13 +733,14 @@ function statsView() {
       ${kv('Average per reading day', S.perDay.toFixed(1))}</section>
     <section class="panel"><h3>At this pace</h3><p class="k">Based on your average of ${S.pace.toFixed(1)} a day over the last ${plural(S.spanDays, 'day')}.</p>
       ${kv(`Finish ${esc(chLabel(S.cur))}`, S.chFinish ? esc(longDate(S.chFinish)) : '—')}
-      ${kv(era === 'pre' ? 'Finish the Pre-Modern era' : 'Finish the Modern era', S.guideFinish ? esc(longDate(S.guideFinish)) : '—')}
-      ${kv('Issues left in this era', fmt(S.guide - S.etot))}</section>
-    ${(() => { const f = chapterForecast(S.m); if (!f.length) return ''; const left = S.guide - S.etot;
+      ${S.eraFinish.map(([l, d]) => kv(`Finish ${l}`, d ? esc(longDate(d)) : '—')).join('')}
+      ${kv('Finish the whole guide', S.guideFinish ? esc(longDate(S.guideFinish)) : '—')}
+      ${kv('Issues left in the guide', fmt(S.guide - S.tot))}</section>
+    ${(() => { const f = chapterForecast(S.m, planOrder()); if (!f.length) return ''; const left = S.guide - S.tot;
       const need = d => Math.ceil(left / Math.max(1, Math.round((parse(d) - parse(today())) / 864e5)));
       const y = new Date().getFullYear(), tg = [[`${y + 1}-06-30`, 'By June 30, ' + (y + 1)], [`${y + 1}-12-31`, 'By the end of ' + (y + 1)], [`${y + 2}-12-31`, 'By the end of ' + (y + 2)]].filter(([d]) => d > today());
-      return `<section class="panel"><h3>Chapter by chapter</h3><p class="k">When you'd finish each chapter if you keep reading ${S.pace.toFixed(1)} a day.</p>${f.map(x => kv(esc(chList(x.c)), `${esc(shortDate(x.date))} <small>· ${fmt(x.left)} left</small>`)).join('')}</section>
-      <section class="panel"><h3>To finish the ${era === 'pre' ? 'Pre-Modern' : 'Modern'} era</h3><p class="k">Issues a day you'd need from today.</p>${tg.map(([d, l]) => kv(l, `${fmt(need(d))} a day`)).join('')}</section>`; })()}
+      return `<section class="panel"><h3>Chapter by chapter</h3><p class="k">When you'd finish each chapter at ${S.pace.toFixed(1)} a day, reading Pre-Modern first and then Modern.</p>${f.map(x => kv(esc(chList(x.c)), `${esc(shortDate(x.date))} <small>· ${fmt(x.left)} left</small>`)).join('')}</section>
+      <section class="panel"><h3>To finish the whole guide</h3><p class="k">Issues a day you'd need from today.</p>${tg.map(([d, l]) => kv(l, `${fmt(need(d))} a day`)).join('')}</section>`; })()}
     <section class="panel"><h3>By weekday</h3><div class="rows">${S.dow.map((v, i) => hbar(DOW[i], v, dmax)).join('')}</div></section>`;
   } else if (statTab === 'ratings') {
     const smax = Math.max(1, ...S.spread.map(x => x[1]));
