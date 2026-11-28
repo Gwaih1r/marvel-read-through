@@ -460,3 +460,10 @@ label.opt{cursor:pointer}
 .pp:first-of-type{border-top:0}
 .pn{min-width:0}.pn b{display:block;font-weight:600}.pn small,.pr small{display:block;color:var(--soft);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pr{text-align:right;flex:none}.pr b{font-size:17px}
+/* v2.8: eras */
+.erasw{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));margin:0 0 12px}
+.tlbands.two{height:auto}
+.tllab{display:block;font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--dim);line-height:1;margin:6px 0 4px}
+.tllane{position:relative;height:20px}
+.tlnow.alt{width:12px;height:12px;margin:-6px 0 0 -6px;border:3px solid var(--soft);box-shadow:none;background:var(--card)}
+.tlo{display:block;text-align:right;font-size:11.5px;color:var(--dim);margin-top:3px}

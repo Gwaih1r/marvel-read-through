@@ -2,7 +2,7 @@ import { firebaseConfig } from './config.js';
 import { ART } from './art.js';
 
 const FB = 'https://www.gstatic.com/firebasejs/10.12.2/';
-const APP_VERSION = '2.7.1';
+const APP_VERSION = '2.8.0';
 
 /* ================= helpers ================= */
 const $ = id => document.getElementById(id);
@@ -33,7 +33,16 @@ function pubRange(s) {
   if (!b || b.mo < 0 || (a.mo === b.mo && a.y === b.y)) return FULLMON[a.mo] + ' ' + a.y;
   return a.y === b.y ? FULLMON[a.mo] + ' to ' + FULLMON[b.mo] + ' ' + b.y : FULLMON[a.mo] + ' ' + a.y + ' to ' + FULLMON[b.mo] + ' ' + b.y;
 }
-const chLabel = c => c.num ? 'Chapter ' + c.num + ': ' + c.name : c.name;
+const isPre = c => c && c.era === 'pre';
+const chLabel = c => isPre(c) ? 'Pre-Modern ' + c.num + ': ' + c.name : c.num ? 'Chapter ' + c.num + ': ' + c.name : c.name;
+const chNo = c => isPre(c) ? 'Pre-Modern Chapter ' + c.num : c.num ? 'Chapter ' + c.num : 'Prologue';
+const chAbbr = c => isPre(c) ? 'Pre-Modern ' + c.num : c.num ? 'Ch. ' + c.num : 'Prologue';
+const chList = c => (isPre(c) ? 'PM' + c.num + '. ' : c.num ? c.num + '. ' : '') + c.name;
+const ERAS = [['modern', 'Modern'], ['pre', 'Pre-Modern']];
+let era = (() => { try { return localStorage.getItem('rt-era') === 'pre' ? 'pre' : 'modern'; } catch (e) { return 'modern'; } })();
+const eraOf = c => isPre(c) ? 'pre' : 'modern';
+const eraCh = (e = era) => chapters.filter(c => eraOf(c) === e);
+const eraSwitch = () => eraCh('pre').length ? `<div class="seg erasw" role="radiogroup" aria-label="Era">${ERAS.map(([k, l]) => `<button role="radio" aria-checked="${era === k}" class="${era === k ? 'on' : ''}" data-act="era" data-v="${k}">${l}</button>`).join('')}</div>` : '';
 const avg = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0;
 
 const I = {
@@ -70,11 +79,12 @@ const chById = {}, evIdx = {};
 
 const P = sid => { const p = prog[sid] || (prog[sid] = { reads: {}, ratings: {} }); if (!p.notes) p.notes = {}; return p; };
 const readCount = sid => Object.keys(P(sid).reads).length;
-const guideTotal = () => chapters.reduce((a, c) => a + c.total, 0);
+const guideTotal = () => eraCh().reduce((a, c) => a + c.total, 0);
+const eraRead = () => eraCh().reduce((a, c) => a + readCount(c.id), 0);
 const totalRead = () => chapters.reduce((a, c) => a + readCount(c.id), 0);
 const isRead = (sid, n) => P(sid).reads[n] !== undefined;
 function allDays() { const m = {}; for (const sid in prog) for (const k in prog[sid].reads) { const d = prog[sid].reads[k]; if (d) m[d] = (m[d] || 0) + 1; } return m; }
-function curChapter() { return chapters.find(c => readCount(c.id) > 0 && readCount(c.id) < c.total) || chapters.find(c => readCount(c.id) < c.total) || chapters[chapters.length - 1]; }
+function curChapter(e = era) { const L = eraCh(e); return L.find(c => readCount(c.id) > 0 && readCount(c.id) < c.total) || L.find(c => readCount(c.id) < c.total) || L[L.length - 1]; }
 const issues = sid => (cat[sid] || []).filter(r => r[0] === 'i');
 const charName = id => (meta && id !== '' && id != null) ? meta.characters[id] || '' : '';
 const writerNames = ids => (meta && ids) ? ids.map(i => meta.writers[i]).filter(Boolean) : [];
@@ -345,7 +355,7 @@ function coverTile(c, cur) {
   return `<button class="cv cover${c === cur ? ' cur' : ''}" style="${coverStyle(c)}" data-act="nav" data-h="ch-${c.id}" aria-label="${esc(chLabel(c))}, ${fmt(r)} of ${fmt(c.total)} read">${coverArt(c)}
     ${done ? '<span class="badge">Done</span>' : c === cur ? '<span class="badge">Reading</span>' : ''}
     <span class="num">${c.num || 'P'}</span>
-    <span><span class="lab">${c.num ? 'Chapter ' + c.num + ' · ' : ''}${esc(c.years)}</span><span class="nm" style="display:block">${esc(c.name)}</span>
+    <span><span class="lab">${c.num ? chNo(c) + ' · ' : ''}${esc(c.years)}</span><span class="nm" style="display:block">${esc(c.name)}</span>
     <span class="meter" style="display:block"><i style="width:${p}%"></i></span><span class="pc"><span>${done ? 'Complete' : fmt(r) + ' / ' + fmt(c.total)}</span><span>${p >= 99.95 || p === 0 ? Math.round(p) : p.toFixed(1)}%</span></span></span></button>`;
 }
 function appbar(title, sub) {
@@ -355,7 +365,7 @@ function appbar(title, sub) {
 
 /* ================= HOME ================= */
 function home() {
-  const m = allDays(), t = today(), tot = totalRead(), guide = guideTotal();
+  const m = allDays(), t = today(), tot = totalRead(), guide = guideTotal(), etot = eraRead();
   const cur = curChapter(), ready = !!cat[cur.id], nx = ready ? nextUp(cur.id) : null;
   let hero;
   if (!ready) hero = `<section class="hero cover" style="${coverStyle(cur)}">${coverArt(cur, 'wide')}<div class="eyebrow"><span>${esc(chLabel(cur))}</span></div><h1>${cat[cur.id] === null ? 'Couldn’t load this chapter' : 'Loading…'}</h1></section>`;
@@ -389,8 +399,8 @@ function home() {
   for (let i = 0; i < 7; i++) { const k = iso(addDays(mon, i)); wk.push([k, m[k] || 0]); }
   const wmax = Math.max(1, ...wk.map(x => x[1])), wsum = wk.reduce((a, x) => a + x[1], 0);
   let last7 = 0; for (let i = 0; i < 7; i++) last7 += m[iso(addDays(new Date(), -i))] || 0;
-  return `${appbar('Read-Through', 'Modern-era Marvel · Continuity Guide order')}
-  ${banner()}${hero}
+  return `${appbar('Read-Through', (era === 'pre' ? 'Pre-Modern' : 'Modern-era') + ' Marvel · Continuity Guide order')}
+  ${banner()}${eraSwitch()}${hero}
   ${goalCard(m)}
   ${(() => { const u = allLoaded ? unratedArcs().length : 0; return u ? `<button class="nudge" data-act="unratednav">${I.star}<span><b>${plural(u, 'finished arc')}</b> ${u === 1 ? 'needs' : 'need'} a rating</span><em>Rate</em></button>` : ''; })()}
   <div class="figs" style="grid-template-columns:repeat(3,minmax(0,1fr))">
@@ -398,19 +408,19 @@ function home() {
     <div class="fig"><b>${fmt(wsum)}</b><span>this week</span></div>
     <div class="fig"><b>${(last7 / 7).toFixed(1)}</b><span>7-day average</span></div>
   </div>
-  <div class="guide"><div class="top"><span>Through the guide</span><span><b>${(tot / guide * 100).toFixed(1)}%</b> of ${fmt(guide)}</span></div><div class="meter"><i style="width:${Math.min(100, tot / guide * 100)}%"></i></div></div>
+  <div class="guide"><div class="top"><span>Through the ${era === 'pre' ? 'Pre-Modern era' : 'Modern era'}</span><span><b>${(etot / guide * 100).toFixed(1)}%</b> of ${fmt(guide)}</span></div><div class="meter"><i style="width:${Math.min(100, etot / guide * 100)}%"></i></div></div>
   ${timeline(false)}
   ${qh}
   <div class="sec"><h2>This week</h2><button data-act="nav" data-h="stats">${plural(wsum, 'issue')} · All stats</button></div>
   <div class="week" role="img" aria-label="Issues read each day this week">${wk.map(([k, v], i) => `<div class="${k === t ? 't' : ''}"><strong>${v || ''}</strong><span class="b"><i class="${v ? '' : 'z'}" style="height:${v ? Math.max(6, v / wmax * 100) : 3}%"></i></span><span>${DOW[i].slice(0, 1)}</span></div>`).join('')}</div>
   <div class="sec"><h2>Chapters</h2><button data-act="nav" data-h="chapters">See all</button></div>
-  <div class="rail" id="rail">${chapters.map(c => coverTile(c, cur)).join('')}</div>`;
+  <div class="rail" id="rail">${eraCh().map(c => coverTile(c, cur)).join('')}</div>`;
 }
 
 /* ================= CHAPTERS ================= */
 function chaptersView() {
-  const cur = curChapter(), done = chapters.filter(c => readCount(c.id) >= c.total).length;
-  return `${appbar('Chapters', `${done} of ${chapters.length} finished`)}${banner()}<div class="grid">${chapters.map(c => coverTile(c, cur)).join('')}</div>`;
+  const cur = curChapter(), L = eraCh(), done = L.filter(c => readCount(c.id) >= c.total).length;
+  return `${appbar('Chapters', `${era === 'pre' ? 'Pre-Modern' : 'Modern'} · ${done} of ${L.length} finished`)}${banner()}${eraSwitch()}${era === 'pre' ? '<p class="hint" style="text-align:left;margin:0 0 12px">Chapters show up here as the Continuity Guide finishes re-coding them.</p>' : ''}<div class="grid">${L.map(c => coverTile(c, cur)).join('')}</div>`;
 }
 
 /* ================= CHAPTER DETAIL ================= */
@@ -419,7 +429,7 @@ function chapterView(sid, focus) {
   const rows = cat[sid], r = readCount(sid), p = r / c.total * 100;
   const head = `<header class="chead cover" style="${coverStyle(c)}">${coverArt(c, 'wide')}
     <button class="back" data-act="nav" data-h="chapters">${I.back}Chapters</button>
-    <div class="k">${c.num ? 'Chapter ' + c.num : 'Prologue'} · ${esc(c.years)}</div>
+    <div class="k">${chNo(c)} · ${esc(c.years)}</div>
     <h1>${esc(c.name)}</h1><p>${esc(c.summary)}</p>
     <div class="prog"><span>${fmt(r)} of ${fmt(c.total)} read</span><span>${p.toFixed(1)}%</span></div><div class="meter"><i style="width:${p}%"></i></div>
     <div class="acts">${r < c.total ? `<button class="btn prim" style="flex:0 1 auto" data-act="jump">${I.down}Jump to next issue</button>` : ''}<a class="btn ghost" href="${c.url.startsWith('https://') ? esc(c.url) : '#'}" target="_blank" rel="noopener">${I.ext}Guide page</a>${canWrite || mode === 'preview' ? `<button class="btn ghost" data-act="coversheet" data-s="${sid}">${I.photo}Cover</button>` : ''}</div>
@@ -509,7 +519,7 @@ function results() {
   if (!hits.length) return '<p class="hint">No issues match that search.</p>';
   return `<p class="hint" style="margin:4px 0 10px;text-align:left">${plural(hits.length, 'match', 'matches')}${hits.length > 100 ? '. Showing the first 100' : ''}</p><div class="res">${hits.slice(0, 100).map(x => {
     const c = chById[x.sid], on = isRead(x.sid, x.r[1]);
-    return `<button class="ri${on ? ' on' : ''}" data-act="nav" data-h="ch-${x.sid}/${x.r[1]}"><span class="chk${on ? ' on' : ''}">${I.check}</span><span><b>${esc(x.r[2])}</b><small>${c.num ? 'Ch. ' + c.num : 'Prologue'}${x.arc ? ' · ' + esc(x.arc) : ''}${on ? ' · Read ' + esc(short(P(x.sid).reads[x.r[1]])) : ''}</small></span></button>`;
+    return `<button class="ri${on ? ' on' : ''}" data-act="nav" data-h="ch-${x.sid}/${x.r[1]}"><span class="chk${on ? ' on' : ''}">${I.check}</span><span><b>${esc(x.r[2])}</b><small>${chAbbr(c)}${x.arc ? ' · ' + esc(x.arc) : ''}${on ? ' · Read ' + esc(short(P(x.sid).reads[x.r[1]])) : ''}</small></span></button>`;
   }).join('')}</div>`;
 }
 
@@ -525,7 +535,7 @@ function recentPace(m) {
 function chapterForecast(m) { // projected finish date for every unfinished chapter, in guide order
   const { pace } = recentPace(m); if (!(pace > 0)) return [];
   let left = 0; const out = [];
-  for (const c of chapters) { const l = c.total - readCount(c.id); if (l <= 0) continue; left += l; out.push({ c, left: l, date: iso(addDays(new Date(), Math.ceil(left / pace))) }); }
+  for (const c of eraCh()) { const l = c.total - readCount(c.id); if (l <= 0) continue; left += l; out.push({ c, left: l, date: iso(addDays(new Date(), Math.ceil(left / pace))) }); }
   return out;
 }
 const shortDate = d => { const x = parse(d); return APM[x.getMonth()] + ' ' + x.getDate() + (x.getFullYear() !== new Date().getFullYear() ? ', ' + x.getFullYear() : ''); };
@@ -571,7 +581,7 @@ function peopleView() {
 /* ================= STATS ================= */
 function computeStats() {
   const m = allDays(), days = Object.keys(m).sort(), t = today(), tot = totalRead(), guide = guideTotal();
-  const S = { m, days, tot, guide, today: m[t] || 0 };
+  const S = { m, days, tot, guide, etot: eraRead(), today: m[t] || 0 };
   S.streak = streakFrom(m);
   let best = 0, run = 0, prev = null;
   for (const d of days) { run = prev && iso(addDays(parse(prev), 1)) === d ? run + 1 : 1; best = Math.max(best, run); prev = d; }
@@ -595,14 +605,14 @@ function computeStats() {
   const cur = curChapter(), left = cur.total - readCount(cur.id);
   S.cur = cur; S.pace = pace;
   S.chFinish = pace > 0 && left > 0 ? iso(addDays(new Date(), Math.ceil(left / pace))) : null;
-  S.guideFinish = pace > 0 && guide > tot ? iso(addDays(new Date(), Math.ceil((guide - tot) / pace))) : null;
+  S.guideFinish = pace > 0 && guide > S.etot ? iso(addDays(new Date(), Math.ceil((guide - S.etot) / pace))) : null;
   S.dow = [0, 0, 0, 0, 0, 0, 0]; for (const [d, v] of Object.entries(m)) S.dow[(parse(d).getDay() + 6) % 7] += v;
   // milestones
   const all = []; for (const sid in prog) for (const k in prog[sid].reads) if (prog[sid].reads[k]) all.push(prog[sid].reads[k]); all.sort();
   const marks = [1, 10, 25, 50, 100, 150, 200, 250, 300, 400, 500, 600, 700, 750, 800, 900, 1000]; for (let x = 1250; x <= 12000; x += 250) marks.push(x);
   S.ms = marks.filter(x => x <= all.length).map(x => ({ label: 'Issue ' + fmt(x), date: all[x - 1], seq: x }));
   S.nextMs = marks.find(x => x > all.length);
-  for (const c of chapters) if (readCount(c.id) >= c.total) { const ds = Object.values(P(c.id).reads).filter(Boolean).sort(); const fd = ds[ds.length - 1]; S.ms.push({ label: 'Finished ' + (c.num ? 'Chapter ' + c.num + ': ' : '') + c.name, date: fd, ch: 1, seq: all.filter(x => x <= fd).length + .5 }); }
+  for (const c of chapters) if (readCount(c.id) >= c.total) { const ds = Object.values(P(c.id).reads).filter(Boolean).sort(); const fd = ds[ds.length - 1]; S.ms.push({ label: 'Finished ' + chLabel(c), date: fd, ch: 1, seq: all.filter(x => x <= fd).length + .5 }); }
   S.ms.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : b.seq - a.seq));
   if (!allLoaded) return S;
   // characters, writers, events
@@ -667,7 +677,7 @@ function daySheet(d) {
   const list = [];
   for (const sid in prog) for (const n in prog[sid].reads) if (prog[sid].reads[n] === d) {
     const r = cat[sid] && issues(sid).find(x => x[1] === +n), c = chById[sid];
-    list.push({ sid: +sid, n: +n, t: r ? r[2] : 'Issue #' + n, c: c ? (c.num ? 'Ch. ' + c.num : 'Prologue') : '' });
+    list.push({ sid: +sid, n: +n, t: r ? r[2] : 'Issue #' + n, c: c ? chAbbr(c) : '' });
   }
   list.sort((a, b) => a.sid - b.sid || a.n - b.n);
   openSheet(`<h3>${esc(longDate(d))}</h3><p>${list.length ? plural(list.length, 'issue') + ' read.' : 'Nothing logged this day.'}</p>
@@ -675,7 +685,7 @@ function daySheet(d) {
     <button class="opt" data-act="closesheet">Close</button>`);
   if (list.some(x => !cat[x.sid])) loadAll().then(() => { if (sheetOpen) daySheet(d); });
 }
-function arcLine(a) { return `<button class="kv" style="width:100%;text-align:left" data-act="nav" data-h="ch-${a.sid}/${a.iss[0] ? a.iss[0][1] : ''}"><span>${esc(a.name)}<br><small style="color:var(--dim)">${a.ch.num ? 'Ch. ' + a.ch.num : 'Prologue'} · ${plural(a.iss.length, 'issue')}</small></span><span style="color:var(--gold);white-space:nowrap">${a.v ? starTxt(a.v) : 'Rate'}</span></button>`; }
+function arcLine(a) { return `<button class="kv" style="width:100%;text-align:left" data-act="nav" data-h="ch-${a.sid}/${a.iss[0] ? a.iss[0][1] : ''}"><span>${esc(a.name)}<br><small style="color:var(--dim)">${chAbbr(a.ch)} · ${plural(a.iss.length, 'issue')}</small></span><span style="color:var(--gold);white-space:nowrap">${a.v ? starTxt(a.v) : 'Rate'}</span></button>`; }
 
 function statsView() {
   const S = computeStats();
@@ -687,7 +697,7 @@ function statsView() {
   else if (statTab === 'overview') {
     const diff = S.thisWeek - S.lastWeekSoFar;
     body = `<div class="figs" style="margin-bottom:10px">
-      <div class="fig wide"><b>${fmt(S.tot)}</b><span>issues read, ${(S.tot / S.guide * 100).toFixed(1)}% of the guide</span></div>
+      <div class="fig wide"><b>${fmt(S.tot)}</b><span>issues read · ${(S.etot / S.guide * 100).toFixed(1)}% of the ${era === 'pre' ? 'Pre-Modern' : 'Modern'} era</span></div>
       <div class="fig"><b>${S.today}</b><span>today</span></div>
       <div class="fig"><b>${S.thisWeek}</b><span>this week</span><em class="${diff >= 0 ? '' : 'dn'}">${diff >= 0 ? '+' : ''}${diff} vs. last</em></div>
       <div class="fig"><b>${S.streak}</b><span>day streak</span></div>
@@ -696,7 +706,7 @@ function statsView() {
       <div class="fig"><b>${S.perDay.toFixed(1)}</b><span>per reading day</span></div>
     </div>
     <section class="panel"><h3>Reading calendar</h3><p class="k">Each square is one day. Columns run Monday to Sunday.</p>${heatmap(S.m)}</section>
-    <section class="panel"><h3>Chapters</h3><div class="rows">${chapters.filter(c => readCount(c.id) > 0 || c === S.cur).map(c => hbar(esc((c.num ? c.num + '. ' : '') + c.name), readCount(c.id), c.total, fmt(readCount(c.id)) + ' / ' + fmt(c.total))).join('')}</div></section>`;
+    <section class="panel"><h3>Chapters</h3><div class="rows">${chapters.filter(c => readCount(c.id) > 0 || c === S.cur).map(c => hbar(esc(chList(c)), readCount(c.id), c.total, fmt(readCount(c.id)) + ' / ' + fmt(c.total))).join('')}</div></section>`;
   } else if (statTab === 'pace') {
     const dmax = Math.max(1, ...S.dow);
     body = `<section class="panel"><h3>Personal bests</h3>
@@ -713,13 +723,13 @@ function statsView() {
       ${kv('Average per reading day', S.perDay.toFixed(1))}</section>
     <section class="panel"><h3>At this pace</h3><p class="k">Based on your average of ${S.pace.toFixed(1)} a day over the last ${plural(S.spanDays, 'day')}.</p>
       ${kv(`Finish ${esc(chLabel(S.cur))}`, S.chFinish ? esc(longDate(S.chFinish)) : '—')}
-      ${kv('Finish the whole guide', S.guideFinish ? esc(longDate(S.guideFinish)) : '—')}
-      ${kv('Issues left in the guide', fmt(S.guide - S.tot))}</section>
-    ${(() => { const f = chapterForecast(S.m); if (!f.length) return ''; const left = S.guide - S.tot;
+      ${kv(era === 'pre' ? 'Finish the Pre-Modern era' : 'Finish the Modern era', S.guideFinish ? esc(longDate(S.guideFinish)) : '—')}
+      ${kv('Issues left in this era', fmt(S.guide - S.etot))}</section>
+    ${(() => { const f = chapterForecast(S.m); if (!f.length) return ''; const left = S.guide - S.etot;
       const need = d => Math.ceil(left / Math.max(1, Math.round((parse(d) - parse(today())) / 864e5)));
       const y = new Date().getFullYear(), tg = [[`${y + 1}-06-30`, 'By June 30, ' + (y + 1)], [`${y + 1}-12-31`, 'By the end of ' + (y + 1)], [`${y + 2}-12-31`, 'By the end of ' + (y + 2)]].filter(([d]) => d > today());
-      return `<section class="panel"><h3>Chapter by chapter</h3><p class="k">When you'd finish each chapter if you keep reading ${S.pace.toFixed(1)} a day.</p>${f.map(x => kv(esc((x.c.num ? x.c.num + '. ' : '') + x.c.name), `${esc(shortDate(x.date))} <small>· ${fmt(x.left)} left</small>`)).join('')}</section>
-      <section class="panel"><h3>To finish the guide</h3><p class="k">Issues a day you'd need from today.</p>${tg.map(([d, l]) => kv(l, `${fmt(need(d))} a day`)).join('')}</section>`; })()}
+      return `<section class="panel"><h3>Chapter by chapter</h3><p class="k">When you'd finish each chapter if you keep reading ${S.pace.toFixed(1)} a day.</p>${f.map(x => kv(esc(chList(x.c)), `${esc(shortDate(x.date))} <small>· ${fmt(x.left)} left</small>`)).join('')}</section>
+      <section class="panel"><h3>To finish the ${era === 'pre' ? 'Pre-Modern' : 'Modern'} era</h3><p class="k">Issues a day you'd need from today.</p>${tg.map(([d, l]) => kv(l, `${fmt(need(d))} a day`)).join('')}</section>`; })()}
     <section class="panel"><h3>By weekday</h3><div class="rows">${S.dow.map((v, i) => hbar(DOW[i], v, dmax)).join('')}</div></section>`;
   } else if (statTab === 'ratings') {
     const smax = Math.max(1, ...S.spread.map(x => x[1]));
@@ -731,7 +741,7 @@ function statsView() {
     ${S.unrated.length ? `<section class="panel" id="unrated"><h3>Finished, waiting on a rating</h3><p class="k">Most recently finished first. Tap one to jump to it.</p>${unratedArcs().map(arcLine).join('')}</section>` : ''}
     ${S.top.length ? `<section class="panel"><h3>Highest rated</h3>${S.top.map(arcLine).join('')}</section>` : ''}
     ${S.low.length > 2 ? `<section class="panel"><h3>Lowest rated</h3>${S.low.map(arcLine).join('')}</section>` : ''}
-    ${S.byChapter.length ? `<section class="panel"><h3>By chapter</h3>${S.byChapter.map(([c, a, n]) => kv(esc((c.num ? c.num + '. ' : '') + c.name), `<span style="color:var(--gold)">${a.toFixed(2)}</span> · ${plural(n, 'arc')}`)).join('')}</section>` : ''}
+    ${S.byChapter.length ? `<section class="panel"><h3>By chapter</h3>${S.byChapter.map(([c, a, n]) => kv(esc(chList(c)), `<span style="color:var(--gold)">${a.toFixed(2)}</span> · ${plural(n, 'arc')}`)).join('')}</section>` : ''}
     ${S.byChar.length ? `<section class="panel"><h3>By character</h3><p class="k">Characters with at least two rated arcs.</p>${S.byChar.map(([k, a, n]) => kv(esc(k), `<span style="color:var(--gold)">${a.toFixed(2)}</span> · ${n}`)).join('')}</section>` : ''}
     ${S.byWriter.length ? `<section class="panel"><h3>By writer</h3>${S.byWriter.map(([k, a, n]) => kv(esc(k), `<span style="color:var(--gold)">${a.toFixed(2)}</span> · ${n}`)).join('')}</section>` : ''}
     <section class="panel"><h3>Long arcs vs. short arcs</h3>${kv('Six issues or more', S.longShort[0][1] ? `${S.longShort[0][0].toFixed(2)} · ${plural(S.longShort[0][1], 'arc')}` : '—')}${kv('Five issues or fewer', S.longShort[1][1] ? `${S.longShort[1][0].toFixed(2)} · ${plural(S.longShort[1][1], 'arc')}` : '—')}</section>`;
@@ -824,7 +834,7 @@ function chapterCelebration(sid) {
   const top = rated.sort((x, y) => y[1] - x[1])[0], av = avg(rated.map(x => x[1]));
   const next = chapters[chapters.indexOf(c) + 1];
   openSheet(`<div class="celeb cover" style="${coverStyle(c)}">${coverArt(c)}
-    <div class="ct"><span class="k">${c.num ? 'Chapter ' + c.num : 'Prologue'} complete</span><h2>${esc(c.name)}</h2>
+    <div class="ct"><span class="k">${chNo(c)} complete</span><h2>${esc(c.name)}</h2>
     <div class="cs"><div><b>${fmt(c.total)}</b><span>issues</span></div><div><b>${days}</b><span>${days === 1 ? 'day' : 'days'}</span></div><div><b>${av ? av.toFixed(1) : '—'}</b><span>avg stars</span></div></div>
     ${top ? `<p>Your top arc: <b>${esc(top[0].name)}</b> ${starTxt(top[1])}</p>` : ''}
     <div class="acts">${next ? `<button class="btn prim" data-act="celebgo" data-h="ch-${next.id}">Start ${esc(chLabel(next))}</button>` : ''}<button class="btn ghost" data-act="closesheet">Close</button></div></div></div>`, 'full');
@@ -833,10 +843,10 @@ function chapterCelebration(sid) {
 /* ================= timeline ================= */
 const TL0 = 1961, TL1 = 2025;
 const tlx = y => Math.max(0, Math.min(100, (y - TL0) / (TL1 - TL0) * 100));
-function chYears(c) { const m = String(c.years).match(/(\d{4})s?\D+(\d{4})s?/); if (!m) return [TL0, TL0 + 1]; let a = +m[1], b = +m[2]; if (c.num === 0) { a = 1961; b = 2001; } return [a, b + 1]; }
+function chYears(c) { const m = String(c.years).match(/(\d{4})s?\D+(\d{4})s?/); if (!m) return [TL0, TL0 + 1]; let a = +m[1], b = +m[2]; if (c.num === 0 && !isPre(c)) { a = 1961; b = 2001; } return [a, b + 1]; }
 function dateYear(s) { const m = /(\d{1,2})?\s*([A-Za-z]{3})[a-z]*\.?\s+(\d{4})/.exec(s || ''); if (!m) return null; const mo = MON.indexOf(m[2].slice(0, 1).toUpperCase() + m[2].slice(1, 3).toLowerCase()); return +m[3] + (mo < 0 ? 0 : mo / 12); }
-function marvelNow() {
-  const cur = curChapter(); if (!cat[cur.id]) return null; const nx = nextUp(cur.id); let y = null;
+function marvelNow(e = era) {
+  const cur = curChapter(e); if (!cur || !cat[cur.id]) return null; if (!eraCh(e).some(c => readCount(c.id) > 0) && e !== era) return null; const nx = nextUp(cur.id); let y = null;
   for (const g of groups(cur.id)) { if (g.a && g.a[3]) { const v = dateYear(g.a[3]); if (v) y = v; } if (nx && g.iss.some(r => r[1] === nx[1])) break; }
   return y;
 }
@@ -854,16 +864,19 @@ function eventYears() {
   }).filter(e => e.y).sort((a, b) => a.y - b.y);
 }
 function timeline(full) {
-  const now = marvelNow(), cur = curChapter();
-  const nowLabel = now ? FULLMON[Math.floor((now % 1) * 12 + .001)] + ' ' + Math.floor(now) : '';
-  const bands = chapters.map((c, i) => { const [a, b] = chYears(c); return `<i class="${c === cur ? 'cur' : readCount(c.id) >= c.total ? 'done' : ''}" style="left:${tlx(a)}%;width:${Math.max(1.2, tlx(b) - tlx(a))}%;top:${(i % 3) * 7}px;background:${c.colors[1]}" title="${esc(chLabel(c))}"></i>`; }).join('');
+  const now = marvelNow(), cur = curChapter(), other = era === 'pre' ? 'modern' : 'pre', hasPre = eraCh('pre').length > 0;
+  const onow = hasPre ? marvelNow(other) : null;
+  const mLab = v => FULLMON[Math.floor((v % 1) * 12 + .001)] + ' ' + Math.floor(v);
+  const nowLabel = now ? mLab(now) : '';
+  const lane = e => eraCh(e).map((c, i) => { const [a, b] = chYears(c); return `<i class="${c === cur ? 'cur' : readCount(c.id) >= c.total ? 'done' : ''}" style="left:${tlx(a)}%;width:${Math.max(1.2, tlx(b) - tlx(a))}%;top:${(i % 3) * 7}px;background:${c.colors[1]}" title="${esc(chLabel(c))}"></i>`; }).join('');
+  const bands = hasPre ? `<span class="tllab">Pre-Modern</span><div class="tllane">${lane('pre')}</div><span class="tllab">Modern</span><div class="tllane m">${lane('modern')}</div>` : lane('modern');
   const evs = full ? eventYears() : [];
   const dots = evs.map(e => `<i class="${e.read >= e.total ? 'done' : e.read ? 'part' : ''}" style="left:${tlx(e.y)}%" title="${esc(e.name)}"></i>`).join('');
   const ticks = [1960, 1970, 1980, 1990, 2000, 2010, 2020].map(y => `<span style="left:${tlx(y)}%">${y}</span>`).join('');
   return `<section class="tl${full ? ' full' : ''}" ${full ? '' : 'data-act="tlopen" role="button" tabindex="0"'}>
-    <div class="tlh"><h3>Marvel time</h3><span>${now ? 'You’re in <b>' + esc(nowLabel) + '</b>' : ''}</span></div>
-    <div class="tltrack"><div class="tlfill" style="width:${now ? tlx(now) : 0}%"></div>${now ? `<div class="tlnow" style="left:${tlx(now)}%"></div>` : ''}</div>
-    <div class="tlbands">${bands}</div>
+    <div class="tlh"><h3>Marvel time</h3><span>${now ? 'You’re in <b>' + esc(nowLabel) + '</b>' : ''}${onow ? `<small class="tlo">${other === 'pre' ? 'Pre-Modern' : 'Modern'}: ${esc(mLab(onow))}</small>` : ''}</span></div>
+    <div class="tltrack"><div class="tlfill" style="width:${now ? tlx(now) : 0}%"></div>${onow ? `<div class="tlnow alt" style="left:${tlx(onow)}%"></div>` : ''}${now ? `<div class="tlnow" style="left:${tlx(now)}%"></div>` : ''}</div>
+    <div class="tlbands${hasPre ? ' two' : ''}">${bands}</div>
     ${full ? `<div class="tldots">${dots}</div>` : ''}
     <div class="tlticks">${ticks}</div>
     ${full ? `<div class="tlev">${evs.map(e => `<div class="${e.read >= e.total ? 'done' : ''}"><span>${Math.floor(e.y)}</span><b>${esc(e.name)}</b><em>${e.read >= e.total ? 'Done' : e.read ? fmt(e.read) + ' / ' + fmt(e.total) : 'Ahead'}</em></div>`).join('')}</div>` : ''}
@@ -1004,7 +1017,7 @@ function route() {
   let h = location.hash.slice(1) || 'home';
   if (h === 'continue') { const c = curChapter(); loadCat(c.id).then(() => { const n = nextUp(c.id); history.replaceState(null, '', '#ch-' + c.id + (n ? '/' + n[1] : '')); route(); }); return; }
   focus = null; flashN = null;
-  const mm = /^ch-(1\d\d)(?:\/(\d+))?$/.exec(h);
+  const mm = /^ch-(\d{3})(?:\/(\d+))?$/.exec(h);
   if (mm) { view = +mm[1]; focus = flashN = mm[2] ? +mm[2] : null; }
   else view = ['home', 'chapters', 'stats', 'search', 'settings'].includes(h) ? h : 'home';
   if (typeof view === 'number') { if (!cat[view]) loadCat(view).then(() => render(true)); }
@@ -1043,7 +1056,7 @@ function sticky() {
   const show = window.scrollY > hd.offsetHeight - 20;
   if (!stickyHost.firstChild) stickyHost.innerHTML = `<div class="sticky"><button class="ibtn" data-act="nav" data-h="chapters" aria-label="Back to chapters">${I.back}</button><b></b><span></span></div>`;
   const s = stickyHost.firstChild; s.classList.toggle('show', show);
-  s.querySelector('b').textContent = (c.num ? c.num + '. ' : '') + c.name;
+  s.querySelector('b').textContent = chList(c);
   s.querySelector('span').textContent = fmt(readCount(view)) + ' / ' + fmt(c.total);
 }
 window.addEventListener('scroll', () => { if (typeof view === 'number') sticky(); }, { passive: true });
@@ -1077,6 +1090,7 @@ document.addEventListener('click', e => {
     case 'jump': { const el = app.querySelector('.is.nx'); if (el) el.scrollIntoView({ block: 'center', behavior: 'smooth' }); break; }
     case 'stattab': statTab = b.dataset.t; render(); window.scrollTo(0, 0); break;
     case 'psort': peopleSort = b.dataset.v; render(); break;
+    case 'era': era = b.dataset.v === 'pre' ? 'pre' : 'modern'; try { localStorage.setItem('rt-era', era); } catch (e) { } buzz(8); render(); break;
     case 'pfilter': sf = { w: '', c: '', e: '', r: '', s: '' }; sf[b.dataset.kind] = b.dataset.k; q = ''; navTo('search'); break;
     case 'fclear': sf = { w: '', c: '', e: '', r: '', s: '' }; { const f = $('fbar'), r = $('results'); if (f) f.innerHTML = filterBar(); if (r) r.innerHTML = results(); } break;
     case 'arcsheet': arcSheet(s, +b.dataset.a); break;

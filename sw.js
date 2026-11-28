@@ -1,8 +1,8 @@
 // Bump VERSION whenever the app changes so installed copies pick up the update.
-const VERSION = 'mrt-v2.7.1';
+const VERSION = 'mrt-v2.8.0';
 const SHELL = ['./', 'index.html', 'app.js', 'app.css', 'art.js', 'config.js', 'manifest.json', 'data/chapters.json', 'data/meta.json', 'data/recaps.json',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/maskable-512.png'];
-const CHAPTERS = Array.from({ length: 26 }, (_, i) => 'data/c' + (100 + i) + '.json');
+const CHAPTERS = [...Array.from({ length: 26 }, (_, i) => 'data/c' + (100 + i) + '.json'), ...Array.from({ length: 5 }, (_, i) => 'data/c' + (201 + i) + '.json')];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(VERSION).then(async c => {
